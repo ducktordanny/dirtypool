@@ -10,14 +10,14 @@ The base game is playable in hotseat mode: one screen, two players, simplified 8
 
 ## Rules (v1)
 
-- Players alternate. Any pocketed object ball scores a point and keeps the turn.
-- The 8 must go last. Sinking it early loses the game.
-- When the 8 goes down legally, the higher score wins (the shooter wins ties).
+- The table starts open. The first pocketed ball gives the shooter that group (solids or stripes); the opponent gets the other.
+- You must hit one of your own balls first, and you keep the turn only when one of your own balls drops. Pocketing only an opponent's ball passes the turn.
+- The 8 must go last: sink it after clearing your group to win, any earlier and you lose.
 - A scratch or a shot that touches nothing passes the turn. After a scratch the cue ball goes back to the head spot.
 
 ## Plan
 
-1. **Base** (done): deterministic simulation, Pixi table, drag-to-aim, hotseat play, websocket rooms.
+1. **Base** (done): deterministic simulation, Pixi table, aim-and-power controls with a cue, hotseat play, websocket rooms.
 2. **Traps**: simultaneous placement phase, five starter traps (bumper, wall, fan, portal, black hole), expiry after a few rounds.
 3. **Online UI**: create/join a room by code, animate the opponent's shot, adopt the server state.
 4. **Feel**: sounds, slow-mo on pocketing, shot clock, debug panel for physics knobs.
@@ -47,7 +47,7 @@ Requires Node 24 (see `.nvmrc`) and pnpm.
 
 ```sh
 pnpm install
-pnpm start:api   # http://localhost:3000
+pnpm start:api   # http://localhost:3001
 pnpm start:ui    # http://localhost:4200
 ```
 
