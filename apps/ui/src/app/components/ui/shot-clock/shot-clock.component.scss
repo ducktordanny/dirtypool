@@ -1,0 +1,53 @@
+:host {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 8px;
+  min-width: 96px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.4);
+  overflow: visible;
+}
+
+:host(.clock--hidden) {
+  visibility: hidden;
+}
+
+.bar {
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  background: var(--color-success);
+  transform-origin: left;
+}
+
+.seconds {
+  position: absolute;
+  right: -28px;
+  top: 50%;
+  transform: translateY(-50%);
+  min-width: 24px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+}
+
+:host(.clock--urgent) .bar {
+  background: var(--color-danger);
+}
+
+:host(.clock--urgent) .seconds {
+  color: var(--color-danger);
+}
+
+:host(.clock--mirrored) .bar {
+  transform-origin: right;
+}
+
+:host(.clock--mirrored) .seconds {
+  right: auto;
+  left: -28px;
+  text-align: right;
+}

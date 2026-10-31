@@ -1,20 +1,7 @@
-$breakpoint: 640px;
-
 :host {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-}
-
-.arena {
-  display: flex;
-  align-items: stretch;
-  gap: var(--space-3);
-}
-
-dp-pool-table {
-  flex: 1;
-  min-width: 0;
 }
 
 .footer {
@@ -27,10 +14,4 @@ dp-pool-table {
 .hint {
   color: var(--color-text-muted);
   font-size: 0.875rem;
-}
-
-@media (max-width: $breakpoint) {
-  .arena {
-    flex-direction: column-reverse;
-  }
 }

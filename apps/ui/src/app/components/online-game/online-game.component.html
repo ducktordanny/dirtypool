@@ -1,0 +1,56 @@
+@if (joinError(); as message) {
+  <section class="notice">
+    <h2 class="notice__title">{{ message }}</h2>
+    <p class="notice__text">Check the code with your friend, or start a room of your own.</p>
+    <dp-button variant="primary" (click)="leave()">Back to start</dp-button>
+  </section>
+} @else if (needsName()) {
+  <section class="notice">
+    <h2 class="notice__title">You're invited to room {{ code() }}</h2>
+    <p class="notice__text">Pick a nickname so your friend knows who showed up.</p>
+    <form class="name-form" (submit)="submitName($event)">
+      <input
+        class="name-form__input"
+        type="text"
+        autocomplete="nickname"
+        spellcheck="false"
+        placeholder="Your name"
+        aria-label="Nickname"
+        [attr.maxlength]="nameMaxLength"
+        [value]="nickname.name()"
+        (input)="onNameInput($event)"
+      />
+      <dp-button variant="primary" type="submit" [disabled]="!nickname.valid()">Join</dp-button>
+    </form>
+  </section>
+} @else if (room.game(); as game) {
+  @if (room.table(); as table) {
+    <dp-game-board
+      [game]="game"
+      [table]="table"
+      [interactive]="room.canShoot()"
+      [names]="names()"
+      [clock]="room.clock()"
+      (shot)="shoot($event)"
+    />
+  }
+  <div class="footer">
+    <div class="footer__status">
+      <span class="status">{{ status() }}</span>
+      @if (room.playerCount() < 2) {
+        <span class="share">
+          Room code <strong class="share__code">{{ room.code() }}</strong>
+          <dp-button (click)="copyLink()">{{ copied() ? 'Copied' : 'Copy link' }}</dp-button>
+        </span>
+      }
+      @if (room.error(); as error) {
+        <span class="error" role="alert">{{ error }}</span>
+      }
+    </div>
+    <dp-button (click)="leave()">Leave</dp-button>
+  </div>
+} @else {
+  <section class="notice">
+    <h2 class="notice__title">Joining room {{ code() }}…</h2>
+  </section>
+}

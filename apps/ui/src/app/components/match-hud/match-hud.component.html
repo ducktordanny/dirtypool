@@ -8,6 +8,7 @@
     <div class="avatar">{{ player.initials }}</div>
     <div class="details">
       <span class="name">{{ player.name }}</span>
+      <dp-shot-clock [clock]="player.active ? clock() : null" [mirrored]="player.index === 1" />
       <div class="balls">
         @for (slot of player.slots; track $index) {
           <dp-ball-icon [id]="slot.id" [dim]="slot.pocketed" [size]="20" />

@@ -1,40 +1,47 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import type { GameState, Shot, TableState } from '@dirtypool/contracts';
 import {
-  FIXED_STEP,
+  SHOT_CLOCK_MS,
   createGame,
-  isAtRest,
+  forfeitTurn,
   resolveShot,
-  startShot,
-  stepTable,
   type TableEvent,
 } from '@dirtypool/game';
-import { FRAME_SCHEDULER } from '../types/frame-scheduler.type';
+import type { ShotClock } from '../types/shot-clock.type';
+import { TIMER_SCHEDULER } from '../types/timer-scheduler.type';
+import { ShotAnimator } from './shot-animator.service';
 
-const MAX_FRAME_SECONDS = 0.1;
-
-// Owns the local game and animates shots with the same fixed-step simulation the server uses.
+// Owns the local hotseat game: both players share one screen and the rules run in the browser.
 @Injectable({ providedIn: 'root' })
 export class GameService {
   readonly game = computed(() => this.gameState());
   readonly table = computed(() => this.tableState());
   readonly animating = computed(() => this.animatingState());
+  readonly clock = computed(() => this.clockState());
   readonly canShoot = computed(() => !this.animatingState() && this.gameState().phase === 'aiming');
 
-  private readonly frames = inject(FRAME_SCHEDULER);
+  private readonly animator = inject(ShotAnimator);
+  private readonly timers = inject(TIMER_SCHEDULER);
   private readonly gameState = signal<GameState>(createGame());
   private readonly tableState = signal<TableState>(this.gameState().table);
   private readonly animatingState = signal(false);
-  private events: TableEvent[] = [];
-  private accumulator = 0;
-  private lastTimestamp: number | null = null;
+  private readonly clockState = signal<ShotClock | null>(null);
+  private cancelAnimation: (() => void) | null = null;
+  private cancelClock: (() => void) | null = null;
+
+  constructor() {
+    this.startClock();
+  }
 
   newGame(): void {
     const game = createGame();
 
+    this.cancelAnimation?.();
+    this.cancelAnimation = null;
     this.animatingState.set(false);
     this.gameState.set(game);
     this.tableState.set(game.table);
+    this.startClock();
   }
 
   shoot(shot: Shot): void {
@@ -42,52 +49,44 @@ export class GameService {
       return;
     }
 
-    this.events = [];
-    this.accumulator = 0;
-    this.lastTimestamp = null;
-    this.tableState.set(startShot(this.tableState(), shot));
+    this.stopClock();
     this.animatingState.set(true);
-    this.frames.request((timestamp) => this.frame(timestamp));
+    this.cancelAnimation = this.animator.play(this.tableState(), shot, {
+      onTable: (table) => this.tableState.set(table),
+      onDone: (table, events) => this.finishShot(table, events),
+    });
   }
 
-  private frame(timestamp: number): void {
-    if (!this.animatingState()) {
-      return;
-    }
+  private finishShot(table: TableState, events: readonly TableEvent[]): void {
+    const game = resolveShot(this.gameState(), table, events);
 
-    const elapsed =
-      this.lastTimestamp === null
-        ? FIXED_STEP
-        : Math.min(MAX_FRAME_SECONDS, (timestamp - this.lastTimestamp) / 1000);
-
-    this.lastTimestamp = timestamp;
-    this.accumulator += elapsed;
-
-    let table = this.tableState();
-
-    while (this.accumulator >= FIXED_STEP && !isAtRest(table)) {
-      const result = stepTable(table);
-
-      table = result.table;
-      this.events.push(...result.events);
-      this.accumulator -= FIXED_STEP;
-    }
-
-    this.tableState.set(table);
-
-    if (isAtRest(table)) {
-      this.finishShot(table);
-      return;
-    }
-
-    this.frames.request((next) => this.frame(next));
-  }
-
-  private finishShot(table: TableState): void {
-    const game = resolveShot(this.gameState(), table, this.events);
-
+    this.cancelAnimation = null;
     this.gameState.set(game);
     this.tableState.set(game.table);
     this.animatingState.set(false);
+    this.startClock();
+  }
+
+  private startClock(): void {
+    this.stopClock();
+
+    if (this.gameState().phase !== 'aiming') {
+      return;
+    }
+
+    this.clockState.set({ deadline: performance.now() + SHOT_CLOCK_MS, durationMs: SHOT_CLOCK_MS });
+    this.cancelClock = this.timers.schedule(() => this.expireClock(), SHOT_CLOCK_MS);
+  }
+
+  private stopClock(): void {
+    this.cancelClock?.();
+    this.cancelClock = null;
+    this.clockState.set(null);
+  }
+
+  private expireClock(): void {
+    this.cancelClock = null;
+    this.gameState.set(forfeitTurn(this.gameState()));
+    this.startClock();
   }
 }

@@ -1,0 +1,16 @@
+<dp-match-hud [game]="game()" [names]="names()" [clock]="clock()" />
+<div class="arena">
+  <dp-power-slider
+    [disabled]="!interactive()"
+    (powerChange)="power.set($event)"
+    (release)="pool.fire($event)"
+  />
+  <dp-pool-table
+    #pool
+    [table]="table()"
+    [interactive]="interactive()"
+    [power]="power()"
+    (shot)="shot.emit($event)"
+  />
+  <dp-ball-tray [balls]="game().pocketedBalls" />
+</div>

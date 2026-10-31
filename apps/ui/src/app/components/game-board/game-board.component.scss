@@ -1,0 +1,24 @@
+$breakpoint: 640px;
+
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.arena {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-3);
+}
+
+dp-pool-table {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: $breakpoint) {
+  .arena {
+    flex-direction: column-reverse;
+  }
+}

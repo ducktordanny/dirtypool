@@ -7,6 +7,7 @@ const OUTCOME_MESSAGES: Record<ShotOutcome, string> = {
   'wrong-ball': 'Wrong ball first.',
   scratch: 'Scratch! Cue ball back on the spot.',
   'no-contact': 'Air ball.',
+  timeout: 'Time ran out.',
   'eight-ball-win': 'The 8 is down.',
   'eight-ball-loss': 'The 8 went in too early.',
 };
@@ -19,12 +20,16 @@ export function describeGame(game: GameState): string {
   return OUTCOME_MESSAGES[game.lastOutcome];
 }
 
-export function describeTurn(game: GameState): string {
+export function describeTurn(game: GameState, names: readonly [string, string]): string {
   if (game.phase === 'finished') {
-    return game.winner === null ? 'Game over' : `Player ${game.winner + 1} wins`;
+    if (game.winner === null) {
+      return 'Game over';
+    }
+
+    return `${names[game.winner]} wins`;
   }
 
   const group = game.players[game.currentPlayer].group ?? 'open table';
 
-  return `Player ${game.currentPlayer + 1} · ${group}`;
+  return `${names[game.currentPlayer]} · ${group}`;
 }

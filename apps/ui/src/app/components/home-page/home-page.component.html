@@ -1,0 +1,56 @@
+<section class="hero">
+  <h2 class="hero__title">Two friends. One table. Dirty tricks.</h2>
+  <p class="hero__text">
+    Classic 8-ball with a sabotage twist. Play on one screen, or open a room and send the code.
+  </p>
+</section>
+
+<div class="cards">
+  <article class="card">
+    <h3 class="card__title">Play online</h3>
+    <p class="card__text">
+      Pick a nickname, then start a room and share the code, or join a friend's room.
+    </p>
+    <label class="field">
+      <span class="field__label">Nickname</span>
+      <input
+        class="field__input"
+        type="text"
+        autocomplete="nickname"
+        spellcheck="false"
+        placeholder="Your name"
+        [attr.maxlength]="nameMaxLength"
+        [value]="nickname.name()"
+        (input)="onNameInput($event)"
+      />
+    </label>
+    <dp-button variant="primary" [disabled]="!canCreate()" (click)="create()">
+      Create a room
+    </dp-button>
+    <form class="join" (submit)="join($event)">
+      <input
+        class="field__input field__input--code"
+        type="text"
+        inputmode="latin"
+        autocapitalize="characters"
+        autocomplete="off"
+        spellcheck="false"
+        maxlength="4"
+        placeholder="CODE"
+        aria-label="Room code"
+        [value]="code()"
+        (input)="onCodeInput($event)"
+      />
+      <dp-button type="submit" [disabled]="!canJoin()">Join</dp-button>
+    </form>
+    @if (error(); as message) {
+      <p class="card__error" role="alert">{{ message }}</p>
+    }
+  </article>
+
+  <article class="card">
+    <h3 class="card__title">Same screen</h3>
+    <p class="card__text">Two players at one computer, taking turns on the same table.</p>
+    <dp-button (click)="hotseat()">Play hotseat</dp-button>
+  </article>
+</div>

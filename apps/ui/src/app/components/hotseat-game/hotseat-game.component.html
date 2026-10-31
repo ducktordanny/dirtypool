@@ -1,20 +1,11 @@
-<dp-match-hud [game]="game.game()" />
-<div class="arena">
-  <dp-power-slider
-    [disabled]="!game.canShoot()"
-    (powerChange)="power.set($event)"
-    (release)="table.fire($event)"
-  />
-  <dp-pool-table
-    #table
-    [table]="game.table()"
-    [interactive]="game.canShoot()"
-    [power]="power()"
-    (shot)="shoot($event)"
-  />
-  <dp-ball-tray [balls]="game.game().pocketedBalls" />
-</div>
+<dp-game-board
+  [game]="game.game()"
+  [table]="game.table()"
+  [interactive]="game.canShoot()"
+  [clock]="game.clock()"
+  (shot)="shoot($event)"
+/>
 <div class="footer">
-  <p class="hint">Arrow keys fine-tune the aim. Hold Shift for bigger steps.</p>
+  <p class="hint">Drag on the table to aim, pull the power bar and let go to shoot.</p>
   <dp-button (click)="newGame()">New game</dp-button>
 </div>

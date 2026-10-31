@@ -14,6 +14,6 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
 
-    expect(fixture.nativeElement.querySelector('h1')?.textContent).toContain('Dirty Pool');
+    expect(fixture.nativeElement.querySelector('.title')?.textContent).toContain('Dirty Pool');
   });
 });
