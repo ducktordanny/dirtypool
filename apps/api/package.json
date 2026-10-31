@@ -1,0 +1,30 @@
+{
+  "name": "api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prestart": "pnpm --filter @dirtypool/contracts --filter @dirtypool/game build",
+    "start": "tsx watch src/server.ts",
+    "start:prod": "node dist/server.js",
+    "build": "tsc --project tsconfig.json",
+    "pretest": "pnpm --filter @dirtypool/contracts --filter @dirtypool/game build",
+    "test": "tsx --test src/*.test.ts src/**/*.test.ts"
+  },
+  "dependencies": {
+    "@dirtypool/contracts": "workspace:*",
+    "@dirtypool/game": "workspace:*",
+    "@fastify/cors": "^11.3.1",
+    "@fastify/static": "^10.1.8",
+    "@fastify/websocket": "^11.3.4",
+    "fastify": "^5.12.7",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.2",
+    "ws": "^8.22.0"
+  }
+}

@@ -1,0 +1,5 @@
+<dp-scoreboard [game]="game.game()" />
+<dp-pool-table [table]="game.table()" [interactive]="game.canShoot()" (shot)="shoot($event)" />
+<div class="actions">
+  <dp-button (click)="newGame()">New game</dp-button>
+</div>

@@ -1,0 +1,26 @@
+{
+  "name": "@dirtypool/game",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "prebuild": "pnpm --filter @dirtypool/contracts build",
+    "build": "tsc --project tsconfig.json",
+    "pretest": "pnpm --filter @dirtypool/contracts build",
+    "test": "tsx --test src/*.test.ts"
+  },
+  "dependencies": {
+    "@dirtypool/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.2"
+  }
+}
