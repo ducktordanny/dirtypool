@@ -90,8 +90,8 @@ export class RoomService {
   private aimTimer: (() => void) | null = null;
   private lastAimAt = Number.NEGATIVE_INFINITY;
 
-  createRoom(name: PlayerName): Promise<RoomCode> {
-    return this.enter({ type: 'create-room', name });
+  createRoom(name: PlayerName, isPrivate = false): Promise<RoomCode> {
+    return this.enter({ type: 'create-room', name, private: isPrivate });
   }
 
   joinRoom(code: string, name: PlayerName): Promise<RoomCode> {

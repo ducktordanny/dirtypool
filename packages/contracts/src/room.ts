@@ -24,7 +24,8 @@ export const aimSchema = shotSchema;
 export type Aim = z.infer<typeof aimSchema>;
 
 export const clientMessageSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('create-room'), name: playerNameSchema }),
+  // Private rooms are reachable by code or link only; they never appear in the open list.
+  z.object({ type: z.literal('create-room'), name: playerNameSchema, private: z.boolean() }),
   z.object({ type: z.literal('join-room'), code: roomCodeSchema, name: playerNameSchema }),
   z.object({ type: z.literal('aim'), aim: aimSchema }),
   // Ball in hand: where the cue ball should sit before the shot.

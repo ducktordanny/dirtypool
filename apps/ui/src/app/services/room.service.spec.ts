@@ -75,10 +75,10 @@ describe('RoomService', () => {
   }
 
   it('creates a room once the socket opens and resolves with the code', async () => {
-    const entry = service.createRoom('Host');
+    const entry = service.createRoom('Host', true);
 
     socket.open();
-    expect(socket.sent).toEqual([{ type: 'create-room', name: 'Host' }]);
+    expect(socket.sent).toEqual([{ type: 'create-room', name: 'Host', private: true }]);
 
     socket.receive({
       type: 'room-joined',

@@ -24,9 +24,21 @@
         (input)="onNameInput($event)"
       />
     </label>
-    <dp-button variant="primary" [disabled]="!canCreate()" (click)="create()">
-      Create a room
-    </dp-button>
+    <div class="create">
+      <dp-button variant="primary" [disabled]="!canCreate()" (click)="create()">
+        Create a room
+      </dp-button>
+      <label class="toggle">
+        <input
+          class="toggle__input"
+          type="checkbox"
+          [checked]="privateRoom()"
+          (change)="onPrivateToggle($event)"
+        />
+        <span>Private room</span>
+        <span class="toggle__hint">not listed, join by code or link</span>
+      </label>
+    </div>
     <form class="join" (submit)="join($event)">
       <input
         class="field__input field__input--code"
@@ -52,5 +64,24 @@
     <h3 class="card__title">Same screen</h3>
     <p class="card__text">Two players at one computer, taking turns on the same table.</p>
     <dp-button (click)="hotseat()">Play hotseat</dp-button>
+  </article>
+
+  <article class="card card--wide">
+    <h3 class="card__title">Open rooms</h3>
+    @if (openRooms().length === 0) {
+      <p class="card__text">Nobody is waiting right now. Create a room and you'll show up here.</p>
+    } @else {
+      <ul class="rooms">
+        @for (room of openRooms(); track room.code) {
+          <li class="room">
+            <span class="room__host">{{ room.host }}</span>
+            <span class="room__meta">
+              {{ room.inProgress ? 'game in progress' : 'waiting for an opponent' }}
+            </span>
+            <dp-button [disabled]="!canCreate()" (click)="joinListed(room)">Join</dp-button>
+          </li>
+        }
+      </ul>
+    }
   </article>
 </div>

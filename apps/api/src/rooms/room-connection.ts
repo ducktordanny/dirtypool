@@ -49,7 +49,7 @@ export class RoomConnection {
   private handle(message: ClientMessage): void {
     switch (message.type) {
       case 'create-room':
-        this.enter(this.rooms.create(this.send, message.name));
+        this.enter(this.rooms.create(this.send, message.name, message.private));
         return;
       case 'join-room': {
         const result = this.rooms.join(message.code, this.send, message.name);

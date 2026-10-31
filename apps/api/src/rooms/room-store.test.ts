@@ -132,3 +132,11 @@ test('ball in hand lets only the fouled-against player move the cue ball to a cl
   assert.equal(store.placeCue(room, host, { x: 0.5, y: 0.5 }), 'placed');
   assert.deepEqual(room.game.table.balls[0]?.position, { x: 0.5, y: 0.5 });
 });
+
+test('private rooms stay out of the open list but can still be joined by code', () => {
+  const store = new RoomStore({ random: () => 0, schedule: () => () => undefined });
+  const { room } = store.create(() => undefined, 'Host', true);
+
+  assert.deepEqual(store.openRooms(), []);
+  assert.equal(store.join(room.code, () => undefined, 'Guest').kind, 'joined');
+});

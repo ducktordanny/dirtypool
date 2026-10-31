@@ -4,9 +4,16 @@ import { isDevMode } from '@angular/core';
 // serves the UI, so the socket lives on the same host.
 const DEV_API_PORT = 3001;
 
+function apiHost(): string {
+  return isDevMode() ? `${location.hostname}:${DEV_API_PORT}` : location.host;
+}
+
 export function roomSocketUrl(): string {
   const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  const host = isDevMode() ? `${location.hostname}:${DEV_API_PORT}` : location.host;
 
-  return `${protocol}://${host}/ws`;
+  return `${protocol}://${apiHost()}/ws`;
+}
+
+export function apiUrl(path: string): string {
+  return `${location.protocol}//${apiHost()}${path}`;
 }

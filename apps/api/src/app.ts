@@ -10,7 +10,11 @@ export interface AppDependencies {
   readonly appOrigin: string;
   readonly rooms: RoomStore;
   readonly staticRoot?: string;
+  // Development only: the UI dev server picks whatever port is free.
+  readonly allowLocalOrigins?: boolean;
 }
+
+const LOCAL_ORIGIN = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/u;
 
 export function buildApp(
   dependencies: AppDependencies,
@@ -18,7 +22,16 @@ export function buildApp(
 ): FastifyInstance {
   const app = Fastify(options);
 
-  void app.register(cors, { origin: dependencies.appOrigin });
+  void app.register(cors, {
+    origin: (origin, callback) => {
+      const allowed =
+        origin === undefined ||
+        origin === dependencies.appOrigin ||
+        (dependencies.allowLocalOrigins === true && LOCAL_ORIGIN.test(origin));
+
+      callback(null, allowed);
+    },
+  });
   void app.register(websocket);
   void app.register(async (instance) => {
     instance.get('/health', async () => healthResponseSchema.parse({ status: 'ok' }));

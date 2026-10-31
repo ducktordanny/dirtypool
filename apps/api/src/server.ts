@@ -7,11 +7,13 @@ import { readServerEnvironment } from './server-environment.js';
 loadLocalEnvironment();
 
 const environment = readServerEnvironment(process.env);
+const production = process.env['NODE_ENV'] === 'production';
 const app = buildApp(
   {
     appOrigin: environment.appOrigin,
     rooms: new RoomStore(),
-    ...(process.env['NODE_ENV'] === 'production'
+    allowLocalOrigins: !production,
+    ...(production
       ? { staticRoot: fileURLToPath(new URL('../../ui/dist/ui/browser', import.meta.url)) }
       : {}),
   },

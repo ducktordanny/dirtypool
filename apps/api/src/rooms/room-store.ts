@@ -1,5 +1,6 @@
 import type {
   GameState,
+  OpenRoom,
   PlayerIndex,
   PlayerName,
   RoomCode,
@@ -26,6 +27,7 @@ export interface RoomPlayer {
 
 export interface Room {
   readonly code: RoomCode;
+  readonly private: boolean;
   readonly players: RoomPlayer[];
   game: GameState;
   // Epoch milliseconds by which the current player must shoot, or null when no clock runs.
@@ -80,10 +82,12 @@ export class RoomStore {
   create(
     send: SendMessage,
     name: PlayerName,
+    isPrivate = false,
   ): { readonly room: Room; readonly player: RoomPlayer } {
     const player: RoomPlayer = { index: 0, name, send };
     const room: Room = {
       code: this.uniqueCode(),
+      private: isPrivate,
       players: [player],
       game: createGame(),
       deadline: null,
@@ -182,6 +186,20 @@ export class RoomStore {
     this.armClock(room, 0);
 
     return true;
+  }
+
+  // Rooms with one seat free, newest first, for the home page list.
+  openRooms(): OpenRoom[] {
+    return [...this.rooms.values()]
+      .filter(
+        (room) => !room.private && room.players.length === 1 && room.game.phase !== 'finished',
+      )
+      .reverse()
+      .map((room) => ({
+        code: room.code,
+        host: room.players[0]?.name ?? 'Unknown',
+        inProgress: room.game.lastOutcome !== null,
+      }));
   }
 
   roster(room: Room): Roster {

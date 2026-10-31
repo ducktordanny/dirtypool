@@ -16,6 +16,48 @@ test('GET /health reports that the API is available', async (context) => {
   assert.deepEqual(response.json(), { status: 'ok' });
 });
 
+test('any localhost origin is allowed in development, only the app origin otherwise', async (context) => {
+  const dev = buildApp({
+    appOrigin: 'http://localhost:4200',
+    rooms: new RoomStore(),
+    allowLocalOrigins: true,
+  });
+  const prod = buildApp({ appOrigin: 'http://localhost:4200', rooms: new RoomStore() });
+  context.after(async () => Promise.all([dev.close(), prod.close()]));
+
+  const fromDev = await dev.inject({
+    method: 'GET',
+    url: '/api/rooms',
+    headers: { origin: 'http://localhost:4311' },
+  });
+  const fromProd = await prod.inject({
+    method: 'GET',
+    url: '/api/rooms',
+    headers: { origin: 'http://localhost:4311' },
+  });
+
+  assert.equal(fromDev.headers['access-control-allow-origin'], 'http://localhost:4311');
+  assert.equal(fromProd.headers['access-control-allow-origin'], undefined);
+});
+
+test('GET /api/rooms lists rooms that still have a free seat', async (context) => {
+  const rooms = new RoomStore();
+  const app = buildApp({ appOrigin: 'http://localhost:4200', rooms });
+  context.after(async () => app.close());
+
+  const { room } = rooms.create(() => undefined, 'Host');
+  const full = rooms.create(() => undefined, 'Busy').room;
+
+  rooms.join(full.code, () => undefined, 'Guest');
+
+  const response = await app.inject({ method: 'GET', url: '/api/rooms' });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json(), {
+    rooms: [{ code: room.code, host: 'Host', inProgress: false }],
+  });
+});
+
 test('two sockets can create and join a room and the host can shoot', async (context) => {
   const app = buildApp({ appOrigin: 'http://localhost:4200', rooms: new RoomStore() });
   context.after(async () => app.close());
@@ -25,7 +67,7 @@ test('two sockets can create and join a room and the host can shoot', async (con
   const guest = await SocketClient.connect(url);
   context.after(async () => Promise.all([host.close(), guest.close()]));
 
-  host.send({ type: 'create-room', name: 'Host' });
+  host.send({ type: 'create-room', name: 'Host', private: false });
   const joined = await host.next('room-joined');
 
   assert.equal(joined.type, 'room-joined');
