@@ -10,10 +10,10 @@ The base game is playable in hotseat mode: one screen, two players, simplified 8
 
 ## Rules (v1)
 
-- The table starts open. The first pocketed ball gives the shooter that group (solids or stripes); the opponent gets the other.
+- The table stays open after the break whatever drops; potting on the break keeps the turn. The first pocketed ball after that gives the shooter that group (solids or stripes); the opponent gets the other. While the table is open, any first contact but the 8 is fine.
 - You must hit one of your own balls first, and you keep the turn only when one of your own balls drops. Pocketing only an opponent's ball passes the turn.
-- The 8 must go last: sink it after clearing your group to win, any earlier and you lose.
-- A scratch or a shot that touches nothing passes the turn. After a scratch the cue ball goes back to the head spot.
+- The 8 must go last: sink it after clearing your group to win, any earlier and you lose. Sinking it on the break wins outright.
+- A scratch, a wrong first contact, a shot that touches nothing or running out the shot clock is a foul: the turn passes and the opponent gets ball in hand, dragging the cue ball anywhere clear before shooting.
 
 ## Plan
 

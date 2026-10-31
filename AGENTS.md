@@ -42,7 +42,7 @@ packages/
 
 - Lengths are metres and speeds metres per second. The table is 2.24 x 1.12 m with a standard 57.15 mm ball.
 - Ball ids are 0 (cue) to 15, with 8 as the eight ball. Ids are stable for the whole game; pocketed balls stay in the array with `pocketed: true`.
-- Rules are 8-ball, lightly simplified: the first pocketed ball assigns solids/stripes, you must hit your own group first and pocket one of your own to keep the turn, the 8 must go last, a scratch or no-contact shot passes the turn. No called pockets and no ball in hand unless players ask.
+- Rules are 8-ball, lightly simplified, modelled on 8 Ball Pool: the break keeps the table open, the first pocketed ball after it assigns solids/stripes, you must hit your own group first (anything but the 8 on an open table) and pocket one of your own to keep the turn, the 8 must go last, a scratch, wrong first contact, no-contact shot or shot-clock timeout is a foul that passes the turn and gives the opponent ball in hand. No called pockets.
 - Shots are `{ direction, power }` with a unit direction and power in 0..1. The server never trusts anything else from a client.
 - Traps must be able to hurt the player who placed them. Avoid trap designs that only affect the opponent.
 
