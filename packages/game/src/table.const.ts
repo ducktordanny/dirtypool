@@ -15,20 +15,38 @@ export const FOOT_SPOT: Vec2 = { x: (TABLE_WIDTH * 3) / 4, y: TABLE_HEIGHT / 2 }
 
 export interface Pocket {
   readonly position: Vec2;
+  // A ball is pocketed once its centre is within this distance.
   readonly radius: number;
+  // The cushions stop this far beyond the radius: inside, a ball is never reflected.
+  readonly mouth: number;
 }
 
+// Pocket centres sit slightly outside the playing surface, inside the rail. In the mouth the
+// cushions no longer reflect a ball; once it overlaps the hole enough, LIP_PULL draws it in so it
+// never hangs on the edge.
+const CORNER_OUTSET = 0.025;
+const SIDE_OUTSET = 0.055;
+const CORNER = { radius: 0.072, mouth: 0.045 };
+const SIDE = { radius: 0.056, mouth: 0.055 };
+
 export const POCKETS: readonly Pocket[] = [
-  { position: { x: 0, y: 0 }, radius: 0.05 },
-  { position: { x: TABLE_WIDTH / 2, y: 0 }, radius: 0.045 },
-  { position: { x: TABLE_WIDTH, y: 0 }, radius: 0.05 },
-  { position: { x: 0, y: TABLE_HEIGHT }, radius: 0.05 },
-  { position: { x: TABLE_WIDTH / 2, y: TABLE_HEIGHT }, radius: 0.045 },
-  { position: { x: TABLE_WIDTH, y: TABLE_HEIGHT }, radius: 0.05 },
+  { position: { x: -CORNER_OUTSET, y: -CORNER_OUTSET }, ...CORNER },
+  { position: { x: TABLE_WIDTH / 2, y: -SIDE_OUTSET }, ...SIDE },
+  { position: { x: TABLE_WIDTH + CORNER_OUTSET, y: -CORNER_OUTSET }, ...CORNER },
+  { position: { x: -CORNER_OUTSET, y: TABLE_HEIGHT + CORNER_OUTSET }, ...CORNER },
+  { position: { x: TABLE_WIDTH / 2, y: TABLE_HEIGHT + SIDE_OUTSET }, ...SIDE },
+  { position: { x: TABLE_WIDTH + CORNER_OUTSET, y: TABLE_HEIGHT + CORNER_OUTSET }, ...CORNER },
 ];
 
-export const MAX_SHOT_SPEED = 7;
-export const ROLLING_DECELERATION = 0.9;
+// Acceleration towards the pocket centre while a ball is on the lip, in m/s^2.
+export const LIP_PULL = 3;
+// A ball overlapping the hole by this fraction of its radius is on the lip.
+export const LIP_OVERLAP = 0.25;
+
+export const MAX_SHOT_SPEED = 6;
+export const ROLLING_DECELERATION = 0.25;
+// Extra slowing proportional to speed (per second), so hard shots settle without braking the tail.
+export const SPEED_DRAG = 0.12;
 export const REST_SPEED = 0.02;
 export const BALL_RESTITUTION = 0.96;
 export const CUSHION_RESTITUTION = 0.7;

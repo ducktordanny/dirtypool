@@ -4,7 +4,7 @@ import type { Ball, TableState } from '@dirtypool/contracts';
 import { isAtRest, stepTable } from './physics.js';
 import { createRackedTable } from './rack.js';
 import { simulateShot } from './simulate.js';
-import { BALL_DIAMETER, BALL_RADIUS, TABLE_HEIGHT, TABLE_WIDTH } from './table.const.js';
+import { BALL_DIAMETER, BALL_RADIUS, POCKETS, TABLE_HEIGHT, TABLE_WIDTH } from './table.const.js';
 import { distance } from './vec2.util.js';
 
 test('racked balls never overlap and stay inside the table', () => {
@@ -62,11 +62,29 @@ test('a ball aimed into a corner is pocketed', () => {
   assert.equal(settled.balls[0]!.pocketed, true);
 });
 
+test('a ball resting on a pocket lip rolls in', () => {
+  const pocket = POCKETS[0]!;
+  const lip = pocket.radius + BALL_RADIUS * 0.3;
+  const start = {
+    x: pocket.position.x + lip * Math.SQRT1_2,
+    y: pocket.position.y + lip * Math.SQRT1_2,
+  };
+  let table = tableWith([ball(0, start.x, start.y, 0, 0)]);
+  let steps = 0;
+
+  while (!table.balls[0]!.pocketed && steps < 2000) {
+    table = stepTable(table).table;
+    steps += 1;
+  }
+
+  assert.equal(table.balls[0]!.pocketed, true);
+});
+
 test('a cushion reflects the ball back into play', () => {
   const table = tableWith([ball(0, 1, 0.5, 0, 0)]);
   const { table: settled, events } = simulateShot(table, {
     direction: { x: 0, y: 1 },
-    power: 0.2,
+    power: 0.15,
   });
 
   assert.ok(events.some((event) => event.kind === 'cushion'));
