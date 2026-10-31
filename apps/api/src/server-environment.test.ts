@@ -4,7 +4,7 @@ import { readServerEnvironment } from './server-environment.js';
 
 test('defaults the port and app origin for local development', () => {
   assert.deepEqual(readServerEnvironment({}), {
-    port: 3000,
+    port: 3001,
     appOrigin: 'http://localhost:4200',
   });
 });

@@ -4,7 +4,7 @@ export interface ServerEnvironment {
 }
 
 export function readServerEnvironment(env: NodeJS.ProcessEnv): ServerEnvironment {
-  const port = Number(env['PORT'] ?? '3000');
+  const port = Number(env['PORT'] ?? '3001');
 
   if (!Number.isInteger(port) || port <= 0) {
     throw new Error('PORT must be a positive integer');
