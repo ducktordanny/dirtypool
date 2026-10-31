@@ -67,6 +67,9 @@ describe('GameService', () => {
     service.newGame();
 
     expect(service.game().lastOutcome).toBeNull();
-    expect(service.game().players).toEqual([{ score: 0 }, { score: 0 }]);
+    expect(service.game().players).toEqual([
+      { score: 0, group: null },
+      { score: 0, group: null },
+    ]);
   });
 });

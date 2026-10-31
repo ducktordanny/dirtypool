@@ -26,7 +26,15 @@ export type Shot = z.infer<typeof shotSchema>;
 export const playerIndexSchema = z.union([z.literal(0), z.literal(1)]);
 export type PlayerIndex = z.infer<typeof playerIndexSchema>;
 
-export const playerStateSchema = z.object({ score: z.number().int().min(0) });
+export const ballGroupSchema = z.enum(['solids', 'stripes']);
+export type BallGroup = z.infer<typeof ballGroupSchema>;
+
+export const playerStateSchema = z.object({
+  // Own-group balls pocketed so far.
+  score: z.number().int().min(0),
+  // Null while the table is open.
+  group: ballGroupSchema.nullable(),
+});
 export type PlayerState = z.infer<typeof playerStateSchema>;
 
 export const gameStateSchema = z.object({
@@ -36,8 +44,19 @@ export const gameStateSchema = z.object({
   phase: z.enum(['aiming', 'finished']),
   winner: playerIndexSchema.nullable(),
   lastOutcome: z
-    .enum(['pocketed', 'missed', 'scratch', 'no-contact', 'eight-ball-win', 'eight-ball-loss'])
+    .enum([
+      'pocketed',
+      'missed',
+      'opponent-ball',
+      'wrong-ball',
+      'scratch',
+      'no-contact',
+      'eight-ball-win',
+      'eight-ball-loss',
+    ])
     .nullable(),
+  // Object balls in the order they went down.
+  pocketedBalls: z.array(ballIdSchema).max(15),
 });
 export type GameState = z.infer<typeof gameStateSchema>;
 export type ShotOutcome = NonNullable<GameState['lastOutcome']>;

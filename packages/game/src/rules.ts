@@ -1,21 +1,48 @@
-import type { GameState, PlayerIndex, ShotOutcome, TableState } from '@dirtypool/contracts';
+import type {
+  BallGroup,
+  BallId,
+  GameState,
+  PlayerIndex,
+  ShotOutcome,
+  TableState,
+} from '@dirtypool/contracts';
 import type { TableEvent } from './physics.js';
 import { createRackedTable, placeCueBall } from './rack.js';
 import { CUE_BALL_ID, EIGHT_BALL_ID } from './table.const.js';
 
+export const SOLIDS: readonly BallId[] = [1, 2, 3, 4, 5, 6, 7];
+export const STRIPES: readonly BallId[] = [9, 10, 11, 12, 13, 14, 15];
+
 export function createGame(): GameState {
   return {
     table: createRackedTable(),
-    players: [{ score: 0 }, { score: 0 }],
+    players: [
+      { score: 0, group: null },
+      { score: 0, group: null },
+    ],
     currentPlayer: 0,
     phase: 'aiming',
     winner: null,
     lastOutcome: null,
+    pocketedBalls: [],
   };
 }
 
-// Simplified rules: any pocketed object ball scores and keeps the turn, the 8 must go last,
-// a scratch or a shot without contact passes the turn.
+export function ballGroup(id: BallId): BallGroup | null {
+  if (id === CUE_BALL_ID || id === EIGHT_BALL_ID) {
+    return null;
+  }
+
+  return id < EIGHT_BALL_ID ? 'solids' : 'stripes';
+}
+
+export function groupBalls(group: BallGroup): readonly BallId[] {
+  return group === 'solids' ? SOLIDS : STRIPES;
+}
+
+// 8-ball rules, lightly simplified: the first pocketed ball assigns the groups, you must hit your
+// own group first and pocket one of your own to keep the turn, the 8 goes last. A scratch or a
+// shot without contact passes the turn; the cue ball goes back on the head spot after a scratch.
 export function resolveShot(
   game: GameState,
   table: TableState,
@@ -30,36 +57,51 @@ export function resolveShot(
     .filter((event) => event.kind === 'pocketed')
     .map((event) => event.ballId);
   const scratched = pocketedIds.includes(CUE_BALL_ID);
-  const madeContact = events.some((event) => event.kind === 'cue-contact');
-  const pocketedObjectBalls = pocketedIds.filter(
-    (id) => id !== CUE_BALL_ID && id !== EIGHT_BALL_ID,
-  ).length;
-  const objectBallsRemaining = table.balls.some(
-    (ball) => ball.id !== CUE_BALL_ID && ball.id !== EIGHT_BALL_ID && !ball.pocketed,
-  );
-  const players = addScore(game.players, shooter, pocketedObjectBalls);
+  const firstContact = events.find((event) => event.kind === 'cue-contact')?.ballId ?? null;
+  const pocketedObjectBalls = pocketedIds.filter((id) => ballGroup(id) !== null);
+  const pocketedBalls = [...game.pocketedBalls, ...pocketedIds.filter((id) => id !== CUE_BALL_ID)];
+  const firstGroup =
+    pocketedObjectBalls[0] === undefined ? null : ballGroup(pocketedObjectBalls[0]);
+  const assigned =
+    game.players[shooter].group === null && firstGroup !== null && !scratched
+      ? assignGroups(game.players, shooter, firstGroup)
+      : game.players;
+  const own = assigned[shooter].group;
+  const players = withScores(assigned, table);
+  const clearedBeforeShot =
+    own !== null && groupBalls(own).every((id) => isPocketed(game.table, id));
 
   if (pocketedIds.includes(EIGHT_BALL_ID)) {
-    const legal = !scratched && !objectBallsRemaining;
-    const winner = legal ? higherScorer(players, shooter) : other(shooter);
+    const legal = !scratched && clearedBeforeShot;
 
     return {
       table,
       players,
       currentPlayer: shooter,
       phase: 'finished',
-      winner,
+      winner: legal ? shooter : other(shooter),
       lastOutcome: legal ? 'eight-ball-win' : 'eight-ball-loss',
+      pocketedBalls,
     };
   }
 
+  const legalContact =
+    firstContact !== null &&
+    (firstContact === EIGHT_BALL_ID
+      ? clearedBeforeShot
+      : own === null || ballGroup(firstContact) === own);
+  const pocketedOwn = own !== null && pocketedObjectBalls.some((id) => ballGroup(id) === own);
   const outcome: ShotOutcome = scratched
     ? 'scratch'
-    : !madeContact
+    : firstContact === null
       ? 'no-contact'
-      : pocketedObjectBalls > 0
-        ? 'pocketed'
-        : 'missed';
+      : !legalContact
+        ? 'wrong-ball'
+        : pocketedOwn
+          ? 'pocketed'
+          : pocketedObjectBalls.length > 0
+            ? 'opponent-ball'
+            : 'missed';
   const keepsTurn = outcome === 'pocketed';
 
   return {
@@ -69,29 +111,44 @@ export function resolveShot(
     phase: 'aiming',
     winner: null,
     lastOutcome: outcome,
+    pocketedBalls,
   };
 }
 
-function addScore(
+function assignGroups(
   players: GameState['players'],
-  player: PlayerIndex,
-  amount: number,
+  shooter: PlayerIndex,
+  group: BallGroup,
 ): GameState['players'] {
+  const opposite: BallGroup = group === 'solids' ? 'stripes' : 'solids';
   const [first, second] = players;
 
-  return player === 0
-    ? [{ score: first.score + amount }, second]
-    : [first, { score: second.score + amount }];
+  return shooter === 0
+    ? [
+        { ...first, group },
+        { ...second, group: opposite },
+      ]
+    : [
+        { ...first, group: opposite },
+        { ...second, group },
+      ];
 }
 
-function higherScorer(players: GameState['players'], tieBreaker: PlayerIndex): PlayerIndex {
+function withScores(players: GameState['players'], table: TableState): GameState['players'] {
   const [first, second] = players;
 
-  if (first.score === second.score) {
-    return tieBreaker;
-  }
+  return [
+    { ...first, score: groupScore(first.group, table) },
+    { ...second, score: groupScore(second.group, table) },
+  ];
+}
 
-  return first.score > second.score ? 0 : 1;
+function groupScore(group: BallGroup | null, table: TableState): number {
+  return group === null ? 0 : groupBalls(group).filter((id) => isPocketed(table, id)).length;
+}
+
+function isPocketed(table: TableState, id: BallId): boolean {
+  return table.balls.some((ball) => ball.id === id && ball.pocketed);
 }
 
 function other(player: PlayerIndex): PlayerIndex {
