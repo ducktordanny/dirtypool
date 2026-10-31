@@ -55,3 +55,6 @@ export const CUSHION_RESTITUTION = 0.7;
 export const FIXED_STEP = 1 / 480;
 export const MAX_SHOT_SECONDS = 60;
 export const MAX_SHOT_STEPS = Math.ceil(MAX_SHOT_SECONDS / FIXED_STEP);
+
+// A player has this long to take a shot once the balls are still; then the turn passes.
+export const SHOT_CLOCK_MS = 30_000;

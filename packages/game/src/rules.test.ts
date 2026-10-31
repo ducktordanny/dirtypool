@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { GameState, TableState } from '@dirtypool/contracts';
 import type { TableEvent } from './physics.js';
-import { SOLIDS, createGame, resolveShot } from './rules.js';
+import { SOLIDS, createGame, forfeitTurn, resolveShot } from './rules.js';
 import { HEAD_SPOT } from './table.const.js';
 
 test('the first pocketed ball assigns the groups and keeps the turn', () => {
@@ -93,6 +93,17 @@ test('pocketed balls are recorded in order across shots', () => {
   const second = resolveShot(first, withPocketed(first.table, [12]), [contact(1), pocketed(12)]);
 
   assert.deepEqual(second.pocketedBalls, [5, 12]);
+});
+
+test('running out the shot clock passes the turn', () => {
+  const game = withGroups(createGame(), 'solids');
+
+  const next = forfeitTurn(game);
+
+  assert.equal(next.currentPlayer, 1);
+  assert.equal(next.lastOutcome, 'timeout');
+  assert.deepEqual(next.table, game.table);
+  assert.equal(forfeitTurn({ ...game, phase: 'finished' }).phase, 'finished');
 });
 
 test('a finished game ignores further shots', () => {

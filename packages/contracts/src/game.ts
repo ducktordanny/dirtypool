@@ -51,6 +51,7 @@ export const gameStateSchema = z.object({
       'wrong-ball',
       'scratch',
       'no-contact',
+      'timeout',
       'eight-ball-win',
       'eight-ball-loss',
     ])

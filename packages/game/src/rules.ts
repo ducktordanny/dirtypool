@@ -115,6 +115,15 @@ export function resolveShot(
   };
 }
 
+// The shot clock ran out: the turn passes, nothing else changes.
+export function forfeitTurn(game: GameState): GameState {
+  if (game.phase !== 'aiming') {
+    return game;
+  }
+
+  return { ...game, currentPlayer: other(game.currentPlayer), lastOutcome: 'timeout' };
+}
+
 function assignGroups(
   players: GameState['players'],
   shooter: PlayerIndex,
