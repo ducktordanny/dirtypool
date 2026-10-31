@@ -7,7 +7,14 @@ import type {
   ServerMessage,
   Shot,
 } from '@dirtypool/contracts';
-import { SHOT_CLOCK_MS, createGame, forfeitTurn, resolveShot, simulateShot } from '@dirtypool/game';
+import {
+  SHOT_CLOCK_MS,
+  createGame,
+  forfeitTurn,
+  placeBallInHand,
+  resolveShot,
+  simulateShot,
+} from '@dirtypool/game';
 
 export type SendMessage = (message: ServerMessage) => void;
 
@@ -30,6 +37,8 @@ export type JoinResult =
   | { readonly kind: 'joined'; readonly room: Room; readonly player: RoomPlayer }
   | { readonly kind: 'not-found' }
   | { readonly kind: 'full' };
+
+export type PlaceResult = 'placed' | 'not-your-turn' | 'no-ball-in-hand' | 'blocked';
 
 export type ShootResult =
   | { readonly kind: 'played'; readonly game: GameState }
@@ -140,6 +149,39 @@ export class RoomStore {
     this.armClock(room, durationSeconds * 1000);
 
     return { kind: 'played', game: room.game };
+  }
+
+  // Ball in hand: only the player on turn, only after a foul, only onto a clear spot.
+  placeCue(room: Room, player: RoomPlayer, position: Vec2): PlaceResult {
+    if (room.game.phase !== 'aiming' || room.game.currentPlayer !== player.index) {
+      return 'not-your-turn';
+    }
+
+    if (!room.game.ballInHand) {
+      return 'no-ball-in-hand';
+    }
+
+    const table = placeBallInHand(room.game.table, position);
+
+    if (table === null) {
+      return 'blocked';
+    }
+
+    room.game = { ...room.game, table };
+
+    return 'placed';
+  }
+
+  // Either player can rack again once the game is over; mid-game restarts are refused.
+  restart(room: Room): boolean {
+    if (room.game.phase !== 'finished') {
+      return false;
+    }
+
+    room.game = createGame();
+    this.armClock(room, 0);
+
+    return true;
   }
 
   roster(room: Room): Roster {

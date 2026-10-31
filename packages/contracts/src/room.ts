@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { gameStateSchema, playerIndexSchema, shotSchema } from './game.js';
+import { gameStateSchema, playerIndexSchema, shotSchema, vec2Schema } from './game.js';
 
 export const roomCodeSchema = z
   .string()
@@ -19,10 +19,19 @@ export type Roster = z.infer<typeof rosterSchema>;
 // no clock is running (waiting for an opponent, game over).
 export const shotClockSchema = z.number().nonnegative().nullable();
 
+// Where the player on turn is pointing right now, relayed so the opponent sees the cue move.
+export const aimSchema = shotSchema;
+export type Aim = z.infer<typeof aimSchema>;
+
 export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('create-room'), name: playerNameSchema }),
   z.object({ type: z.literal('join-room'), code: roomCodeSchema, name: playerNameSchema }),
+  z.object({ type: z.literal('aim'), aim: aimSchema }),
+  // Ball in hand: where the cue ball should sit before the shot.
+  z.object({ type: z.literal('place-cue'), position: vec2Schema }),
   z.object({ type: z.literal('shoot'), shot: shotSchema }),
+  // Rack a fresh game once the current one is over.
+  z.object({ type: z.literal('restart') }),
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 
@@ -45,6 +54,9 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     clock: shotClockSchema,
   }),
   z.object({ type: z.literal('turn-passed'), game: gameStateSchema, clock: shotClockSchema }),
+  z.object({ type: z.literal('opponent-aim'), aim: aimSchema }),
+  z.object({ type: z.literal('cue-placed'), position: vec2Schema }),
+  z.object({ type: z.literal('game-reset'), game: gameStateSchema, clock: shotClockSchema }),
   z.object({ type: z.literal('error'), message: z.string() }),
 ]);
 export type ServerMessage = z.infer<typeof serverMessageSchema>;

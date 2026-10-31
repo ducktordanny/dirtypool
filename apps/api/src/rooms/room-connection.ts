@@ -1,4 +1,4 @@
-import { clientMessageSchema, type ClientMessage, type Shot } from '@dirtypool/contracts';
+import { clientMessageSchema, type Aim, type ClientMessage, type Shot } from '@dirtypool/contracts';
 import type { Room, RoomPlayer, RoomStore, SendMessage } from './room-store.js';
 
 // One instance per websocket. Parses untrusted client messages and drives the room store.
@@ -65,9 +65,68 @@ export class RoomConnection {
         });
         return;
       }
+      case 'aim':
+        this.relayAim(message.aim);
+        return;
+      case 'place-cue':
+        this.placeCue(message.position);
+        return;
       case 'shoot':
         this.shoot(message.shot);
         return;
+      case 'restart':
+        this.restart();
+        return;
+    }
+  }
+
+  private placeCue(position: Vec2): void {
+    if (this.membership === null) {
+      this.send({ type: 'error', message: 'Join a room first' });
+      return;
+    }
+
+    const { room, player } = this.membership;
+    const result = this.rooms.placeCue(room, player, position);
+
+    if (result !== 'placed') {
+      this.send({ type: 'error', message: PLACE_ERRORS[result] });
+      return;
+    }
+
+    this.rooms.broadcast(room, { type: 'cue-placed', position });
+  }
+
+  private restart(): void {
+    if (this.membership === null) {
+      this.send({ type: 'error', message: 'Join a room first' });
+      return;
+    }
+
+    const { room } = this.membership;
+
+    if (!this.rooms.restart(room)) {
+      this.send({ type: 'error', message: 'The game is still running' });
+      return;
+    }
+
+    this.rooms.broadcast(room, {
+      type: 'game-reset',
+      game: room.game,
+      clock: this.rooms.clock(room),
+    });
+  }
+
+  // Only the player on turn has a cue to show; anything else is dropped silently.
+  private relayAim(aim: Aim): void {
+    if (this.membership === null) {
+      return;
+    }
+
+    const { room, player } = this.membership;
+
+    if (room.game.phase === 'aiming' && room.game.currentPlayer === player.index) {
+      this.rooms.broadcast(room, { type: 'opponent-aim', aim }, player);
     }
   }
 
@@ -117,6 +176,12 @@ export class RoomConnection {
     });
   }
 }
+
+const PLACE_ERRORS = {
+  'not-your-turn': 'It is not your turn',
+  'no-ball-in-hand': 'You do not have ball in hand',
+  blocked: 'The cue ball cannot go there',
+} as const;
 
 const SHOOT_ERRORS = {
   'not-your-turn': 'It is not your turn',

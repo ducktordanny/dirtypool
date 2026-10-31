@@ -95,3 +95,40 @@ test('the shot clock passes the turn when it runs out', () => {
   assert.equal(received[0]?.type, 'turn-passed');
   assert.equal(timers.length, 2);
 });
+
+test('a finished game can be restarted, a running one cannot', () => {
+  const store = new RoomStore({ random: () => 0, schedule: () => () => undefined });
+  const { room } = store.create(() => undefined, 'Host');
+
+  store.join(room.code, () => undefined, 'Guest');
+
+  assert.equal(store.restart(room), false);
+
+  room.game = { ...room.game, phase: 'finished', winner: 0 };
+
+  assert.equal(store.restart(room), true);
+  assert.equal(room.game.phase, 'aiming');
+  assert.equal(room.game.pocketedBalls.length, 0);
+  assert.ok((store.clock(room) ?? 0) > 0);
+});
+
+test('ball in hand lets only the fouled-against player move the cue ball to a clear spot', () => {
+  const store = new RoomStore({ random: () => 0, schedule: () => () => undefined });
+  const { room, player: host } = store.create(() => undefined, 'Host');
+  const guest = store.join(room.code, () => undefined, 'Guest');
+
+  assert.equal(guest.kind, 'joined');
+
+  if (guest.kind !== 'joined') {
+    return;
+  }
+
+  assert.equal(store.placeCue(room, host, { x: 0.5, y: 0.5 }), 'no-ball-in-hand');
+
+  room.game = { ...room.game, ballInHand: true };
+
+  assert.equal(store.placeCue(room, guest.player, { x: 0.5, y: 0.5 }), 'not-your-turn');
+  assert.equal(store.placeCue(room, host, { x: 0.005, y: 0.5 }), 'blocked');
+  assert.equal(store.placeCue(room, host, { x: 0.5, y: 0.5 }), 'placed');
+  assert.deepEqual(room.game.table.balls[0]?.position, { x: 0.5, y: 0.5 });
+});

@@ -43,6 +43,12 @@ test('two sockets can create and join a room and the host can shoot', async (con
   assert.equal(roster.type === 'roster' && roster.roster.join(','), 'Host,Guest');
   assert.ok(roster.type === 'roster' && roster.clock !== null && roster.clock > 0);
 
+  host.send({ type: 'aim', aim: { direction: { x: 0, y: 1 }, power: 0.3 } });
+  assert.deepEqual(await guest.next('opponent-aim'), {
+    type: 'opponent-aim',
+    aim: { direction: { x: 0, y: 1 }, power: 0.3 },
+  });
+
   host.send({ type: 'shoot', shot: { direction: { x: 1, y: 0.01 }, power: 0.7 } });
   const [hostShot, guestShot] = await Promise.all([
     host.next('shot-played'),
