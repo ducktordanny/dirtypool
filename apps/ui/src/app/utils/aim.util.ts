@@ -1,4 +1,4 @@
-import type { TableState, Vec2 } from '@dirtypool/contracts';
+import type { Ball, TableState, Vec2 } from '@dirtypool/contracts';
 import {
   BALL_DIAMETER,
   BALL_RADIUS,
@@ -7,60 +7,150 @@ import {
   TABLE_WIDTH,
   add,
   distance,
+  dot,
+  length,
   normalize,
   scale,
   subtract,
 } from '@dirtypool/game';
-import { MAX_DRAG_DISTANCE } from '../config/table-render.const';
 import type { ShotAim } from '../types/shot-aim.type';
 
-const SWEEP_STEP = 0.004;
-const MAX_SWEEP_LENGTH = 3;
+// Pointers closer than this to the cue ball give no usable direction.
+const MIN_POINTER_DISTANCE = 0.01;
+const FALLBACK_DIRECTION: Vec2 = { x: 1, y: 0 };
 
-// Pulling the pointer away from the cue ball aims the shot in the opposite direction.
-export function aimFromPointer(table: TableState, pointer: Vec2): ShotAim | null {
+export function cueBall(table: TableState): Ball | null {
   const cue = table.balls.find((ball) => ball.id === CUE_BALL_ID);
 
-  if (cue === undefined || cue.pocketed) {
+  return cue === undefined || cue.pocketed ? null : cue;
+}
+
+// The cue ball travels towards the pointer.
+export function directionFromPointer(origin: Vec2, pointer: Vec2): Vec2 | null {
+  const offset = subtract(pointer, origin);
+
+  return length(offset) < MIN_POINTER_DISTANCE ? null : normalize(offset);
+}
+
+export function defaultAimDirection(table: TableState): Vec2 {
+  const cue = cueBall(table);
+
+  if (cue === null) {
+    return FALLBACK_DIRECTION;
+  }
+
+  let nearest: Ball | null = null;
+
+  for (const ball of table.balls) {
+    if (ball.id === CUE_BALL_ID || ball.pocketed) {
+      continue;
+    }
+
+    if (
+      nearest === null ||
+      distance(cue.position, ball.position) < distance(cue.position, nearest.position)
+    ) {
+      nearest = ball;
+    }
+  }
+
+  return nearest === null
+    ? FALLBACK_DIRECTION
+    : normalize(subtract(nearest.position, cue.position));
+}
+
+export function rotateDirection(direction: Vec2, radians: number): Vec2 {
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+
+  return normalize({
+    x: direction.x * cos - direction.y * sin,
+    y: direction.x * sin + direction.y * cos,
+  });
+}
+
+export function aimAlong(table: TableState, direction: Vec2): ShotAim | null {
+  const cue = cueBall(table);
+
+  if (cue === null) {
     return null;
   }
 
-  const pull = subtract(cue.position, pointer);
-  const direction = normalize(pull);
-  const power = Math.min(1, distance(cue.position, pointer) / MAX_DRAG_DISTANCE);
-  const { ghost, targetBallId } = sweepCuePath(table, cue.position, direction);
+  const origin = cue.position;
+  let travel = cushionDistance(origin, direction);
+  let target: Ball | null = null;
 
-  return { origin: cue.position, direction, power, ghost, targetBallId };
-}
-
-function sweepCuePath(
-  table: TableState,
-  origin: Vec2,
-  direction: Vec2,
-): Pick<ShotAim, 'ghost' | 'targetBallId'> {
-  const others = table.balls.filter((ball) => ball.id !== CUE_BALL_ID && !ball.pocketed);
-  let ghost = origin;
-
-  for (let travelled = 0; travelled < MAX_SWEEP_LENGTH; travelled += SWEEP_STEP) {
-    const next = add(origin, scale(direction, travelled));
-
-    if (
-      next.x < BALL_RADIUS ||
-      next.x > TABLE_WIDTH - BALL_RADIUS ||
-      next.y < BALL_RADIUS ||
-      next.y > TABLE_HEIGHT - BALL_RADIUS
-    ) {
-      return { ghost, targetBallId: null };
+  for (const ball of table.balls) {
+    if (ball.id === CUE_BALL_ID || ball.pocketed) {
+      continue;
     }
 
-    const hit = others.find((ball) => distance(ball.position, next) < BALL_DIAMETER);
+    const hit = ballDistance(origin, direction, ball.position);
 
-    if (hit !== undefined) {
-      return { ghost, targetBallId: hit.id };
+    if (hit !== null && hit < travel) {
+      travel = hit;
+      target = ball;
     }
-
-    ghost = next;
   }
 
-  return { ghost, targetBallId: null };
+  const ghost = add(origin, scale(direction, travel));
+
+  if (target === null) {
+    return {
+      origin,
+      direction,
+      ghost,
+      targetBallId: null,
+      targetDirection: null,
+      cueDeflection: null,
+      fullness: 0,
+    };
+  }
+
+  const targetDirection = normalize(subtract(target.position, ghost));
+  const fullness = Math.max(0, dot(direction, targetDirection));
+  const tangent = subtract(direction, scale(targetDirection, fullness));
+
+  return {
+    origin,
+    direction,
+    ghost,
+    targetBallId: target.id,
+    targetDirection,
+    cueDeflection: length(tangent) < 1e-3 ? null : normalize(tangent),
+    fullness,
+  };
+}
+
+// Distance the cue ball centre can travel before touching a cushion.
+function cushionDistance(origin: Vec2, direction: Vec2): number {
+  const limits = [
+    direction.x > 0 ? (TABLE_WIDTH - BALL_RADIUS - origin.x) / direction.x : Infinity,
+    direction.x < 0 ? (BALL_RADIUS - origin.x) / direction.x : Infinity,
+    direction.y > 0 ? (TABLE_HEIGHT - BALL_RADIUS - origin.y) / direction.y : Infinity,
+    direction.y < 0 ? (BALL_RADIUS - origin.y) / direction.y : Infinity,
+  ];
+
+  return Math.max(0, Math.min(...limits));
+}
+
+// Distance along the ray until the cue ball touches the given ball centre, or null when it misses.
+function ballDistance(origin: Vec2, direction: Vec2, centre: Vec2): number | null {
+  const toCentre = subtract(centre, origin);
+  const along = dot(toCentre, direction);
+
+  if (along <= 0) {
+    return null;
+  }
+
+  const perpendicularSquared = dot(toCentre, toCentre) - along * along;
+  const reachSquared = BALL_DIAMETER * BALL_DIAMETER - perpendicularSquared;
+
+  if (reachSquared < 0) {
+    return null;
+  }
+
+  const hit = along - Math.sqrt(reachSquared);
+
+  return hit < 0 ? 0 : hit;
 }

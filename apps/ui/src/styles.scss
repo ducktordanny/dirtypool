@@ -1,13 +1,14 @@
 :root {
   color-scheme: dark;
-  --color-canvas: #14161a;
-  --color-surface: #1f2228;
-  --color-border: #2f333b;
+  --color-canvas: #1a2440;
+  --color-surface: #243154;
+  --color-border: #35446e;
   --color-text: #f2f3f5;
   --color-text-muted: #9aa0ab;
   --color-accent: #f2c14e;
   --color-accent-text: #14161a;
   --color-danger: #e5484d;
+  --color-success: #3fbf6e;
   --radius: 8px;
   --space-1: 4px;
   --space-2: 8px;
@@ -20,7 +21,8 @@
 }
 
 html {
-  background: var(--color-canvas);
+  background: radial-gradient(ellipse at 50% 30%, #26365e, var(--color-canvas) 70%);
+  min-height: 100%;
 }
 
 body {

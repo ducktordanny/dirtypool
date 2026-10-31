@@ -1,0 +1,93 @@
+$handle: 32px;
+$breakpoint: 640px;
+
+:host {
+  --power: 0;
+  display: block;
+  width: $handle;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+  outline: none;
+
+  &:focus-visible .track {
+    box-shadow: 0 0 0 2px var(--color-accent);
+  }
+}
+
+.track {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: calc($handle / 2);
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: top;
+  transform: scaleY(var(--power));
+  background: linear-gradient(to bottom, #f6e05e 0%, #f2893d 55%, #e5484d 100%);
+  opacity: 0.9;
+}
+
+.handle {
+  position: absolute;
+  left: 0;
+  top: calc(var(--power) * (100% - #{$handle}));
+  width: $handle;
+  height: $handle;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-surface);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+}
+
+.handle__cue {
+  width: 4px;
+  height: 20px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to bottom,
+    #3a6ea5 0 12%,
+    #f1ead8 12% 20%,
+    #d8b27a 20% 60%,
+    #1d1a18 60%
+  );
+}
+
+.slider--dragging {
+  cursor: grabbing;
+}
+
+.slider--disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+@media (max-width: $breakpoint) {
+  :host {
+    width: 100%;
+    height: $handle;
+  }
+
+  .fill {
+    transform-origin: left;
+    transform: scaleX(var(--power));
+    background: linear-gradient(to right, #f6e05e 0%, #f2893d 55%, #e5484d 100%);
+  }
+
+  .handle {
+    top: 0;
+    left: calc(var(--power) * (100% - #{$handle}));
+  }
+
+  .handle__cue {
+    transform: rotate(-90deg);
+  }
+}

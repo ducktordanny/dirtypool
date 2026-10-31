@@ -1,0 +1,24 @@
+@for (player of players(); track player.index) {
+  <div
+    class="player"
+    [class.player--second]="player.index === 1"
+    [class.player--active]="player.active"
+    [class.player--winner]="player.winner"
+  >
+    <div class="avatar">{{ player.initials }}</div>
+    <div class="details">
+      <span class="name">{{ player.name }}</span>
+      <div class="balls">
+        @for (slot of player.slots; track $index) {
+          <dp-ball-icon [id]="slot.id" [dim]="slot.pocketed" [size]="20" />
+        }
+      </div>
+    </div>
+  </div>
+  @if (player.index === 0) {
+    <div class="centre">
+      <span class="turn">{{ turn() }}</span>
+      <span class="message">{{ message() }}</span>
+    </div>
+  }
+}

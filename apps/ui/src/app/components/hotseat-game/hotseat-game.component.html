@@ -1,5 +1,20 @@
-<dp-scoreboard [game]="game.game()" />
-<dp-pool-table [table]="game.table()" [interactive]="game.canShoot()" (shot)="shoot($event)" />
-<div class="actions">
+<dp-match-hud [game]="game.game()" />
+<div class="arena">
+  <dp-power-slider
+    [disabled]="!game.canShoot()"
+    (powerChange)="power.set($event)"
+    (release)="table.fire($event)"
+  />
+  <dp-pool-table
+    #table
+    [table]="game.table()"
+    [interactive]="game.canShoot()"
+    [power]="power()"
+    (shot)="shoot($event)"
+  />
+  <dp-ball-tray [balls]="game.game().pocketedBalls" />
+</div>
+<div class="footer">
+  <p class="hint">Arrow keys fine-tune the aim. Hold Shift for bigger steps.</p>
   <dp-button (click)="newGame()">New game</dp-button>
 </div>
