@@ -4,9 +4,9 @@ import type { ServerMessage } from '@dirtypool/contracts';
 import { RoomStore } from './room-store.js';
 
 test('creates a room with a four-letter code and seats the creator as player 0', () => {
-  const store = new RoomStore(() => 0);
+  const store = new RoomStore({ random: () => 0 });
 
-  const { room, player } = store.create(() => undefined);
+  const { room, player } = store.create(() => undefined, 'Host');
 
   assert.equal(room.code, 'AAAA');
   assert.equal(player.index, 0);
@@ -14,22 +14,22 @@ test('creates a room with a four-letter code and seats the creator as player 0',
 });
 
 test('a second player joins as player 1 and a third is refused', () => {
-  const store = new RoomStore(() => 0);
-  const { room } = store.create(() => undefined);
+  const store = new RoomStore({ random: () => 0 });
+  const { room } = store.create(() => undefined, 'Host');
 
-  const joined = store.join(room.code, () => undefined);
-  const refused = store.join(room.code, () => undefined);
+  const joined = store.join(room.code, () => undefined, 'Guest');
+  const refused = store.join(room.code, () => undefined, 'Guest');
 
   assert.equal(joined.kind, 'joined');
   assert.equal(joined.kind === 'joined' && joined.player.index, 1);
   assert.equal(refused.kind, 'full');
-  assert.equal(store.join('ZZZZ', () => undefined).kind, 'not-found');
+  assert.equal(store.join('ZZZZ', () => undefined, 'Guest').kind, 'not-found');
 });
 
 test('only the current player can shoot and the result is simulated server-side', () => {
-  const store = new RoomStore(() => 0);
-  const { room, player: host } = store.create(() => undefined);
-  const guest = store.join(room.code, () => undefined);
+  const store = new RoomStore({ random: () => 0 });
+  const { room, player: host } = store.create(() => undefined, 'Host');
+  const guest = store.join(room.code, () => undefined, 'Guest');
   const shot = { direction: { x: 1, y: 0 }, power: 0.8 };
 
   assert.equal(guest.kind, 'joined');
@@ -49,8 +49,8 @@ test('only the current player can shoot and the result is simulated server-side'
 });
 
 test('shooting alone is refused until an opponent joins', () => {
-  const store = new RoomStore(() => 0);
-  const { room, player } = store.create(() => undefined);
+  const store = new RoomStore({ random: () => 0 });
+  const { room, player } = store.create(() => undefined, 'Host');
 
   const result = store.shoot(room, player, { direction: { x: 1, y: 0 }, power: 0.5 });
 
@@ -58,11 +58,40 @@ test('shooting alone is refused until an opponent joins', () => {
 });
 
 test('leaving removes the player and an empty room is forgotten', () => {
-  const store = new RoomStore(() => 0);
+  const store = new RoomStore({ random: () => 0 });
   const received: ServerMessage[] = [];
   const { room, player } = store.create((message) => received.push(message));
 
   store.leave(room, player);
 
-  assert.equal(store.join(room.code, () => undefined).kind, 'not-found');
+  assert.equal(store.join(room.code, () => undefined, 'Guest').kind, 'not-found');
+});
+
+test('the shot clock passes the turn when it runs out', () => {
+  const timers: (() => void)[] = [];
+  const received: ServerMessage[] = [];
+  const store = new RoomStore({
+    random: () => 0,
+    now: () => 1000,
+    schedule: (callback) => {
+      timers.push(callback);
+
+      return () => undefined;
+    },
+  });
+  const { room } = store.create(() => undefined, 'Host');
+
+  assert.equal(store.clock(room), null);
+
+  store.join(room.code, (message) => received.push(message), 'Guest');
+
+  assert.ok((store.clock(room) ?? 0) > 0);
+  assert.equal(timers.length, 1);
+
+  timers[0]!();
+
+  assert.equal(room.game.currentPlayer, 1);
+  assert.equal(room.game.lastOutcome, 'timeout');
+  assert.equal(received[0]?.type, 'turn-passed');
+  assert.equal(timers.length, 2);
 });

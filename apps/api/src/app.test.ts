@@ -25,7 +25,7 @@ test('two sockets can create and join a room and the host can shoot', async (con
   const guest = await SocketClient.connect(url);
   context.after(async () => Promise.all([host.close(), guest.close()]));
 
-  host.send({ type: 'create-room' });
+  host.send({ type: 'create-room', name: 'Host' });
   const joined = await host.next('room-joined');
 
   assert.equal(joined.type, 'room-joined');
@@ -34,11 +34,14 @@ test('two sockets can create and join a room and the host can shoot', async (con
     return;
   }
 
-  guest.send({ type: 'join-room', code: joined.code });
+  guest.send({ type: 'join-room', code: joined.code, name: 'Guest' });
   const guestJoined = await guest.next('room-joined');
 
   assert.equal(guestJoined.type === 'room-joined' && guestJoined.playerIndex, 1);
-  assert.deepEqual(await host.next('player-count'), { type: 'player-count', playerCount: 2 });
+  const roster = await host.next('roster');
+
+  assert.equal(roster.type === 'roster' && roster.roster.join(','), 'Host,Guest');
+  assert.ok(roster.type === 'roster' && roster.clock !== null && roster.clock > 0);
 
   host.send({ type: 'shoot', shot: { direction: { x: 1, y: 0.01 }, power: 0.7 } });
   const [hostShot, guestShot] = await Promise.all([

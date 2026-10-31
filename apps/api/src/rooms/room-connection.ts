@@ -38,17 +38,21 @@ export class RoomConnection {
     const { room, player } = this.membership;
 
     this.rooms.leave(room, player);
-    this.rooms.broadcast(room, { type: 'player-count', playerCount: room.players.length });
+    this.rooms.broadcast(room, {
+      type: 'roster',
+      roster: this.rooms.roster(room),
+      clock: this.rooms.clock(room),
+    });
     this.membership = null;
   }
 
   private handle(message: ClientMessage): void {
     switch (message.type) {
       case 'create-room':
-        this.enter(this.rooms.create(this.send));
+        this.enter(this.rooms.create(this.send, message.name));
         return;
       case 'join-room': {
-        const result = this.rooms.join(message.code, this.send);
+        const result = this.rooms.join(message.code, this.send, message.name);
 
         if (result.kind === 'joined') {
           this.enter(result);
@@ -76,14 +80,18 @@ export class RoomConnection {
 
     const { room, player } = membership;
 
+    const roster = this.rooms.roster(room);
+    const clock = this.rooms.clock(room);
+
     this.send({
       type: 'room-joined',
       code: room.code,
       playerIndex: player.index,
-      playerCount: room.players.length,
+      roster,
       game: room.game,
+      clock,
     });
-    this.rooms.broadcast(room, { type: 'player-count', playerCount: room.players.length }, player);
+    this.rooms.broadcast(room, { type: 'roster', roster, clock }, player);
   }
 
   private shoot(shot: Shot): void {
@@ -105,6 +113,7 @@ export class RoomConnection {
       playerIndex: player.index,
       shot,
       game: result.game,
+      clock: this.rooms.clock(room),
     });
   }
 }
