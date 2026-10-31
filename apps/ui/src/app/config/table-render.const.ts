@@ -33,6 +33,7 @@ export const TABLE_COLORS = {
   marking: 0xffffff,
   shadow: 0x000000,
   guide: 0xffffff,
+  foul: 0xff5a5a,
   cueTip: 0x3a6ea5,
   cueFerrule: 0xf1ead8,
   cueShaft: 0xd8b27a,

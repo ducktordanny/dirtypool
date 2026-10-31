@@ -56,15 +56,24 @@ export function drawCue(graphics: Graphics, aim: ShotAim, pull: number, viewport
   drawShaftHighlight(graphics, tip, back, side, viewport);
 }
 
-export function drawAimGuide(graphics: Graphics, aim: ShotAim, viewport: Viewport): void {
+export interface AimGuideOptions {
+  // The ball the cue ball would hit first may not be hit first: paint the guide as a foul.
+  readonly foulTarget: Vec2 | null;
+}
+
+export function drawAimGuide(
+  graphics: Graphics,
+  aim: ShotAim,
+  viewport: Viewport,
+  options: AimGuideOptions = { foulTarget: null },
+): void {
   const radius = BALL_RADIUS * viewport.scale;
   const ghost = toScreen(aim.ghost, viewport);
+  const color = options.foulTarget === null ? TABLE_COLORS.guide : TABLE_COLORS.foul;
 
   graphics.clear();
-  drawDashedLine(graphics, aim.origin, aim.ghost, viewport);
-  graphics
-    .circle(ghost.x, ghost.y, radius)
-    .stroke({ color: TABLE_COLORS.guide, width: 2, alpha: 0.85 });
+  drawDashedLine(graphics, aim.origin, aim.ghost, viewport, color);
+  graphics.circle(ghost.x, ghost.y, radius).stroke({ color, width: 2, alpha: 0.85 });
 
   if (aim.targetDirection !== null) {
     const end = toScreen(
@@ -72,10 +81,7 @@ export function drawAimGuide(graphics: Graphics, aim: ShotAim, viewport: Viewpor
       viewport,
     );
 
-    graphics
-      .moveTo(ghost.x, ghost.y)
-      .lineTo(end.x, end.y)
-      .stroke({ color: TABLE_COLORS.guide, width: 2, alpha: 0.85 });
+    graphics.moveTo(ghost.x, ghost.y).lineTo(end.x, end.y).stroke({ color, width: 2, alpha: 0.85 });
   }
 
   if (aim.cueDeflection !== null) {
@@ -84,10 +90,22 @@ export function drawAimGuide(graphics: Graphics, aim: ShotAim, viewport: Viewpor
       viewport,
     );
 
+    graphics.moveTo(ghost.x, ghost.y).lineTo(end.x, end.y).stroke({ color, width: 2, alpha: 0.4 });
+  }
+
+  if (options.foulTarget !== null) {
+    const target = toScreen(options.foulTarget, viewport);
+    const ring = radius * 1.45;
+    const cross = radius * 0.5;
+
     graphics
-      .moveTo(ghost.x, ghost.y)
-      .lineTo(end.x, end.y)
-      .stroke({ color: TABLE_COLORS.guide, width: 2, alpha: 0.4 });
+      .circle(target.x, target.y, ring)
+      .stroke({ color, width: 3, alpha: 0.95 })
+      .moveTo(target.x - cross, target.y - ring - cross * 1.6)
+      .lineTo(target.x + cross, target.y - ring - cross * 0.2)
+      .moveTo(target.x + cross, target.y - ring - cross * 1.6)
+      .lineTo(target.x - cross, target.y - ring - cross * 0.2)
+      .stroke({ color, width: 3, alpha: 0.95 });
   }
 }
 
@@ -131,7 +149,13 @@ function drawShaftHighlight(
     .stroke({ color: 0xffffff, width: Math.max(1, 0.003 * viewport.scale), alpha: 0.22 });
 }
 
-function drawDashedLine(graphics: Graphics, from: Vec2, to: Vec2, viewport: Viewport): void {
+function drawDashedLine(
+  graphics: Graphics,
+  from: Vec2,
+  to: Vec2,
+  viewport: Viewport,
+  color: number,
+): void {
   const total = Math.hypot(to.x - from.x, to.y - from.y);
 
   if (total === 0) {
@@ -150,5 +174,5 @@ function drawDashedLine(graphics: Graphics, from: Vec2, to: Vec2, viewport: View
     graphics.moveTo(start.x, start.y).lineTo(end.x, end.y);
   }
 
-  graphics.stroke({ color: TABLE_COLORS.guide, width: 2, alpha: 0.5 });
+  graphics.stroke({ color, width: 2, alpha: 0.5 });
 }

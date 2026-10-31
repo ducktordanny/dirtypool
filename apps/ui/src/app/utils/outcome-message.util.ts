@@ -17,7 +17,11 @@ export function describeGame(game: GameState): string {
     return 'Open table. Drag to aim, pull the power bar to shoot.';
   }
 
-  return OUTCOME_MESSAGES[game.lastOutcome];
+  const message = OUTCOME_MESSAGES[game.lastOutcome];
+
+  return game.ballInHand && game.phase === 'aiming'
+    ? `${message} Ball in hand: drag the cue ball anywhere.`
+    : message;
 }
 
 export function describeTurn(game: GameState, names: readonly [string, string]): string {

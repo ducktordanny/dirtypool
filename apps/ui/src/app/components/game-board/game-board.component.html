@@ -5,12 +5,30 @@
     (powerChange)="power.set($event)"
     (release)="pool.fire($event)"
   />
-  <dp-pool-table
-    #pool
-    [table]="table()"
-    [interactive]="interactive()"
-    [power]="power()"
-    (shot)="shot.emit($event)"
-  />
+  <div class="stage">
+    <dp-pool-table
+      #pool
+      [table]="table()"
+      [interactive]="interactive()"
+      [power]="power()"
+      [remoteAim]="remoteAim()"
+      [legalTargets]="legalTargets()"
+      [ballInHand]="ballInHand()"
+      (shot)="shot.emit($event)"
+      (aimChange)="aim.emit($event)"
+      (cueMove)="cueMove.emit($event)"
+      (cuePlace)="cuePlace.emit($event)"
+    />
+    <dp-outcome-banner [announcement]="announcement()" />
+    <ng-content select="[boardOverlay]" />
+    @if (result(); as result) {
+      <dp-match-result
+        [winnerName]="result.winnerName"
+        [celebrate]="result.celebrate"
+        [detail]="result.detail"
+        (restart)="restart.emit()"
+      />
+    }
+  </div>
   <dp-ball-tray [balls]="game().pocketedBalls" />
 </div>

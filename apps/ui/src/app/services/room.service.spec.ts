@@ -2,7 +2,9 @@ import { TestBed } from '@angular/core/testing';
 import type { ServerMessage } from '@dirtypool/contracts';
 import { createGame } from '@dirtypool/game';
 import { ManualFrameScheduler } from '../testing/manual-frame-scheduler';
+import { ManualTimerScheduler } from '../testing/manual-timer-scheduler';
 import { FRAME_SCHEDULER } from '../types/frame-scheduler.type';
+import { TIMER_SCHEDULER } from '../types/timer-scheduler.type';
 import { ROOM_SOCKET_FACTORY, type RoomSocket } from '../types/room-socket.type';
 import { RoomService } from './room.service';
 
@@ -33,17 +35,24 @@ class FakeSocket implements RoomSocket {
 
 const SHOT = { direction: { x: 1, y: 0 }, power: 0.5 };
 
+function aimsSent(socket: FakeSocket): unknown[] {
+  return socket.sent.filter((message) => (message as { type: string }).type === 'aim');
+}
+
 describe('RoomService', () => {
   let service: RoomService;
   let frames: ManualFrameScheduler;
+  let timers: ManualTimerScheduler;
   let socket: FakeSocket;
 
   beforeEach(() => {
     frames = new ManualFrameScheduler();
+    timers = new ManualTimerScheduler();
     socket = new FakeSocket();
     TestBed.configureTestingModule({
       providers: [
         { provide: FRAME_SCHEDULER, useValue: frames },
+        { provide: TIMER_SCHEDULER, useValue: timers },
         { provide: ROOM_SOCKET_FACTORY, useValue: () => socket },
       ],
     });
@@ -143,6 +152,7 @@ describe('RoomService', () => {
 
     expect(service.animating()).toBe(true);
     expect(service.canShoot()).toBe(false);
+    expect(service.clock()).toBeNull();
 
     frames.flush();
 
@@ -150,6 +160,7 @@ describe('RoomService', () => {
     expect(service.game()).toEqual(played);
     expect(service.table()).toEqual(played.table);
     expect(service.canShoot()).toBe(true);
+    expect(service.clock()?.durationMs).toBe(30_000);
   });
 
   it('only sends a shot when it is this player turn', async () => {
@@ -180,6 +191,139 @@ describe('RoomService', () => {
 
     expect(service.game()).toEqual(passed);
     expect(service.canShoot()).toBe(true);
+  });
+
+  it('shows the opponent cue while they aim and drops it the moment they shoot', async () => {
+    await joinAsGuest();
+
+    socket.receive({ type: 'opponent-aim', aim: { direction: { x: 0, y: 1 }, power: 0.4 } });
+
+    expect(service.opponentAim()).toEqual({ direction: { x: 0, y: 1 }, power: 0.4 });
+
+    socket.receive({
+      type: 'shot-played',
+      playerIndex: 0,
+      shot: SHOT,
+      game: { ...createGame(), currentPlayer: 1 },
+      clock: 32_000,
+    });
+
+    expect(service.animating()).toBe(true);
+    expect(service.opponentAim()).toBeNull();
+
+    socket.receive({ type: 'opponent-aim', aim: { direction: { x: 1, y: 0 }, power: 0.1 } });
+
+    expect(service.opponentAim()).toBeNull();
+
+    frames.flush();
+
+    expect(service.opponentAim()).toBeNull();
+  });
+
+  it('throttles outgoing aim updates and sends the latest one on its turn', async () => {
+    await joinAsGuest();
+    socket.receive({
+      type: 'turn-passed',
+      game: { ...createGame(), currentPlayer: 1, lastOutcome: 'timeout' },
+      clock: 30_000,
+    });
+
+    service.sendAim({ direction: { x: 1, y: 0 }, power: 0 });
+    service.sendAim({ direction: { x: 0, y: 1 }, power: 0.2 });
+    service.sendAim({ direction: { x: 0, y: -1 }, power: 0.5 });
+
+    expect(aimsSent(socket)).toHaveLength(1);
+    expect(timers.pending).toHaveLength(1);
+
+    timers.fire();
+
+    expect(aimsSent(socket)).toEqual([
+      { type: 'aim', aim: { direction: { x: 1, y: 0 }, power: 0 } },
+      { type: 'aim', aim: { direction: { x: 0, y: -1 }, power: 0.5 } },
+    ]);
+  });
+
+  it('does not send aim when it is not this player turn', async () => {
+    await joinAsGuest();
+
+    service.sendAim({ direction: { x: 1, y: 0 }, power: 0.3 });
+
+    expect(aimsSent(socket)).toHaveLength(0);
+  });
+
+  it('announces each shot outcome and clears it on a reset', async () => {
+    await joinAsGuest();
+
+    expect(service.lastShot()).toBeNull();
+
+    socket.receive({
+      type: 'shot-played',
+      playerIndex: 0,
+      shot: SHOT,
+      game: { ...createGame(), currentPlayer: 1, lastOutcome: 'scratch' },
+      clock: 32_000,
+    });
+    frames.flush();
+
+    expect(service.lastShot()).toEqual({ seq: 1, outcome: 'scratch' });
+
+    socket.receive({ type: 'game-reset', game: createGame(), clock: 30_000 });
+
+    expect(service.lastShot()).toBeNull();
+    expect(service.game()?.lastOutcome).toBeNull();
+  });
+
+  it('asks for a rematch only once the game is over', async () => {
+    await joinAsGuest();
+
+    service.restart();
+    expect(
+      socket.sent.filter((message) => (message as { type: string }).type === 'restart'),
+    ).toHaveLength(0);
+
+    socket.receive({
+      type: 'turn-passed',
+      game: { ...createGame(), phase: 'finished', winner: 0, lastOutcome: 'eight-ball-win' },
+      clock: null,
+    });
+    service.restart();
+
+    expect(socket.sent.at(-1)).toEqual({ type: 'restart' });
+  });
+
+  it('remembers who the opponent was after they leave', async () => {
+    await joinAsGuest();
+
+    expect(service.opponentName()).toBe('Host');
+
+    socket.receive({ type: 'roster', roster: [null, 'Guest'], clock: null });
+
+    expect(service.opponentName()).toBeNull();
+    expect(service.lastOpponentName()).toBe('Host');
+    expect(service.playerCount()).toBe(1);
+    expect(service.clock()).toBeNull();
+    expect(service.canShoot()).toBe(false);
+  });
+
+  it('sends a cue placement with ball in hand and applies the confirmed spot', async () => {
+    await joinAsGuest();
+    socket.receive({
+      type: 'turn-passed',
+      game: { ...createGame(), currentPlayer: 1, lastOutcome: 'timeout', ballInHand: true },
+      clock: 30_000,
+    });
+
+    service.moveCueBall({ x: 0.5, y: 0.5 });
+    expect(service.table()?.balls[0]?.position).toEqual({ x: 0.5, y: 0.5 });
+
+    service.placeCueBall({ x: 0.005, y: 0.5 });
+    expect(service.table()).toEqual(service.game()?.table);
+
+    service.placeCueBall({ x: 0.5, y: 0.5 });
+    expect(socket.sent.at(-1)).toEqual({ type: 'place-cue', position: { x: 0.5, y: 0.5 } });
+
+    socket.receive({ type: 'cue-placed', position: { x: 0.5, y: 0.5 } });
+    expect(service.game()?.table.balls[0]?.position).toEqual({ x: 0.5, y: 0.5 });
   });
 
   it('reports a lost connection and clears the room', async () => {

@@ -1,0 +1,55 @@
+:host {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.banner {
+  padding: var(--space-2) var(--space-4);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  color: var(--color-text);
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+  animation: banner-pop 1.4s ease-out forwards;
+}
+
+.banner--good {
+  color: var(--color-success);
+}
+
+.banner--bad {
+  color: var(--color-danger);
+}
+
+@keyframes banner-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+
+  15% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+
+  25% {
+    transform: scale(1);
+  }
+
+  75% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1) translateY(-16px);
+  }
+}

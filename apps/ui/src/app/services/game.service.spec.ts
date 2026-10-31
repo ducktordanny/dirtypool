@@ -62,6 +62,23 @@ describe('GameService', () => {
     expect(timers.pending).toHaveLength(1);
   });
 
+  it('lets the cue ball be moved only with ball in hand, snapping back from bad spots', () => {
+    service.moveCueBall({ x: 0.5, y: 0.5 });
+    expect(service.table().balls[0]?.position).toEqual(service.game().table.balls[0]?.position);
+
+    timers.fire();
+    expect(service.game().ballInHand).toBe(true);
+
+    service.moveCueBall({ x: 0.5, y: 0.5 });
+    expect(service.table().balls[0]?.position).toEqual({ x: 0.5, y: 0.5 });
+
+    service.placeCueBall({ x: 0.005, y: 0.5 });
+    expect(service.table()).toEqual(service.game().table);
+
+    service.placeCueBall({ x: 0.6, y: 0.4 });
+    expect(service.game().table.balls[0]?.position).toEqual({ x: 0.6, y: 0.4 });
+  });
+
   it('resets everything on a new game', () => {
     service.shoot({ direction: { x: 1, y: 0 }, power: 0.8 });
     frames.flush();

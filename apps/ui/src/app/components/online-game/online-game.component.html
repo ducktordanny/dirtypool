@@ -30,9 +30,29 @@
       [table]="table"
       [interactive]="room.canShoot()"
       [names]="names()"
+      [viewer]="room.playerIndex()"
       [clock]="room.clock()"
+      [remoteAim]="room.opponentAim()"
+      [announcement]="room.lastShot()"
       (shot)="shoot($event)"
-    />
+      (aim)="room.sendAim($event)"
+      (cueMove)="room.moveCueBall($event)"
+      (cuePlace)="room.placeCueBall($event)"
+      (restart)="room.restart()"
+    >
+      @if (opponentLeft()) {
+        <dp-board-notice
+          boardOverlay
+          [title]="room.lastOpponentName() + ' left the game'"
+          text="The table is paused. Send the link to let them back in, or anyone else can take the seat and carry on."
+        >
+          <dp-button variant="primary" (click)="copyLink()">
+            {{ copied() ? 'Copied' : 'Copy link' }}
+          </dp-button>
+          <dp-button (click)="leave()">Leave</dp-button>
+        </dp-board-notice>
+      }
+    </dp-game-board>
   }
   <div class="footer">
     <div class="footer__status">

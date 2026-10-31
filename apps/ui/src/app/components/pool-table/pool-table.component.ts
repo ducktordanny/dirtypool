@@ -11,8 +11,8 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import type { BallId, Shot, TableState, Vec2 } from '@dirtypool/contracts';
-import { BALL_RADIUS } from '@dirtypool/game';
+import type { Aim, BallId, Shot, TableState, Vec2 } from '@dirtypool/contracts';
+import { BALL_RADIUS, TABLE_HEIGHT, TABLE_WIDTH, placeBallInHand } from '@dirtypool/game';
 import { Application, Container, type FederatedPointerEvent, Graphics } from 'pixi.js';
 import {
   AIM_ROTATE_STEP,
@@ -30,7 +30,7 @@ import {
   directionFromPointer,
   rotateDirection,
 } from '../../utils/aim.util';
-import { measureViewport, toWorld } from '../../utils/viewport.util';
+import { measureViewport, toScreen, toWorld } from '../../utils/viewport.util';
 import {
   type BallSprite,
   animateSink,
@@ -41,6 +41,8 @@ import {
   startSink,
 } from './ball-sprite.util';
 import { drawAimGuide, drawCue } from './cue.util';
+import { foulTargetPosition } from './foul-target.util';
+import { type PocketBurst, drawPocketBursts, startPocketBurst } from './pocket-burst.util';
 import { drawTableSurface, nearestPocketVisual } from './table-surface.util';
 
 @Component({
@@ -65,7 +67,18 @@ export class PoolTable {
   readonly interactive = input(false);
   // 0..1, drawn as cue pull-back while the player sets the shot power.
   readonly power = input(0);
+  // The opponent's live aim while it is their turn; drawn as a cue without guide lines.
+  readonly remoteAim = input<Aim | null>(null);
+  // Balls this player may hit first; null means anything goes. Aiming elsewhere is marked.
+  readonly legalTargets = input<readonly BallId[] | null>(null);
+  // Ball in hand: the cue ball can be dragged to a new spot before the shot.
+  readonly ballInHand = input(false);
   readonly shot = output<Shot>();
+  // Fires while this player aims, so the opponent can watch the cue.
+  readonly aimChange = output<Aim>();
+  // Cue ball dragging while ball in hand: every move for preview, then the final spot.
+  readonly cueMove = output<Vec2>();
+  readonly cuePlace = output<Vec2>();
 
   protected readonly aspectRatio = TABLE_ASPECT_RATIO;
 
@@ -76,18 +89,38 @@ export class PoolTable {
   private readonly direction = signal<Vec2 | null>(null);
   private readonly strikePull = signal<number | null>(null);
   private readonly aim = computed(() => {
-    const direction = this.direction();
+    if (this.interactive()) {
+      const direction = this.direction();
 
-    return direction === null || !this.interactive() ? null : aimAlong(this.table(), direction);
+      return direction === null ? null : aimAlong(this.table(), direction);
+    }
+
+    const remote = this.remoteAim();
+
+    return remote === null ? null : aimAlong(this.table(), remote.direction);
   });
-  private readonly cuePull = computed(() => this.strikePull() ?? this.power() * CUE_MAX_PULL);
+  private readonly cuePull = computed(() => {
+    const strike = this.strikePull();
+
+    if (strike !== null) {
+      return strike;
+    }
+
+    const power = this.interactive() ? this.power() : (this.remoteAim()?.power ?? 0);
+
+    return power * CUE_MAX_PULL;
+  });
   private readonly surface = new Graphics();
   private readonly shadows = new Graphics();
   private readonly balls = new Container();
   private readonly guide = new Graphics();
   private readonly cue = new Graphics();
+  private readonly bursts = new Graphics();
+  private readonly activeBursts: PocketBurst[] = [];
   private readonly ballSprites = new Map<BallId, BallSprite>();
+  private readonly draggingCue = signal(false);
   private aiming = false;
+  private dragPoint: Vec2 | null = null;
 
   constructor() {
     afterNextRender(() => void this.mount());
@@ -123,14 +156,18 @@ export class PoolTable {
       const viewport = this.viewport();
       const aim = this.aim();
       const pull = this.cuePull();
-      const striking = this.strikePull() !== null;
+      const dragging = this.draggingCue();
+      const showGuide = this.interactive() && this.strikePull() === null && !dragging;
+      const legal = this.legalTargets();
+      const table = this.table();
+      const grabbable = this.interactive() && this.ballInHand() && !dragging;
 
       untracked(() => {
         if (app === null) {
           return;
         }
 
-        if (aim === null) {
+        if (aim === null || dragging) {
           this.guide.clear();
           this.cue.clear();
           return;
@@ -138,10 +175,32 @@ export class PoolTable {
 
         drawCue(this.cue, aim, pull, viewport);
 
-        if (striking) {
-          this.guide.clear();
+        if (showGuide) {
+          drawAimGuide(this.guide, aim, viewport, {
+            foulTarget: foulTargetPosition(table, aim.targetBallId, legal),
+          });
         } else {
-          drawAimGuide(this.guide, aim, viewport);
+          this.guide.clear();
+        }
+
+        if (grabbable) {
+          const centre = toScreen(aim.origin, viewport);
+
+          this.guide
+            .circle(centre.x, centre.y, BALL_RADIUS * viewport.scale * 1.6)
+            .stroke({ color: 0xffffff, width: 2, alpha: 0.7 });
+        }
+      });
+    });
+
+    effect(() => {
+      const interactive = this.interactive();
+      const direction = this.direction();
+      const power = this.power();
+
+      untracked(() => {
+        if (interactive && direction !== null) {
+          this.aimChange.emit({ direction, power });
         }
       });
     });
@@ -158,8 +217,9 @@ export class PoolTable {
   }
 
   // Plays the strike animation, then emits the shot.
-  fire(power: number): void {
+  fire(requestedPower: number): void {
     const aim = this.aim();
+    const power = Math.min(1, Math.max(0, requestedPower));
 
     if (aim === null || this.strikePull() !== null || power < MIN_SHOT_POWER) {
       return;
@@ -224,7 +284,7 @@ export class PoolTable {
     });
 
     this.host.nativeElement.appendChild(app.canvas);
-    app.stage.addChild(this.surface, this.shadows, this.balls, this.guide, this.cue);
+    app.stage.addChild(this.surface, this.shadows, this.balls, this.bursts, this.guide, this.cue);
     app.stage.eventMode = 'static';
     app.ticker.add(() => this.animateSinks());
     app.stage.hitArea = app.screen;
@@ -245,11 +305,29 @@ export class PoolTable {
       return;
     }
 
+    const point = toWorld(event.global, this.viewport());
+    const cue = cueBall(this.table());
+
+    if (
+      this.ballInHand() &&
+      cue !== null &&
+      Math.hypot(point.x - cue.position.x, point.y - cue.position.y) < BALL_RADIUS * 2.5
+    ) {
+      this.draggingCue.set(true);
+      this.dragCueTo(point);
+      return;
+    }
+
     this.aiming = true;
     this.aimAt(event.global);
   }
 
   private onPointerMove(event: FederatedPointerEvent): void {
+    if (this.draggingCue()) {
+      this.dragCueTo(toWorld(event.global, this.viewport()));
+      return;
+    }
+
     if (this.aiming && this.canAim()) {
       this.aimAt(event.global);
     }
@@ -257,6 +335,36 @@ export class PoolTable {
 
   private onPointerUp(): void {
     this.aiming = false;
+
+    if (this.draggingCue()) {
+      this.draggingCue.set(false);
+      this.tintCueBall(true);
+
+      if (this.dragPoint !== null) {
+        this.cuePlace.emit(this.dragPoint);
+      }
+
+      this.dragPoint = null;
+    }
+  }
+
+  private dragCueTo(point: Vec2): void {
+    const position = {
+      x: Math.min(TABLE_WIDTH - BALL_RADIUS, Math.max(BALL_RADIUS, point.x)),
+      y: Math.min(TABLE_HEIGHT - BALL_RADIUS, Math.max(BALL_RADIUS, point.y)),
+    };
+
+    this.dragPoint = position;
+    this.tintCueBall(placeBallInHand(this.table(), position) !== null);
+    this.cueMove.emit(position);
+  }
+
+  private tintCueBall(allowed: boolean): void {
+    const sprite = this.ballSprites.get(0);
+
+    if (sprite !== undefined) {
+      sprite.view.tint = allowed ? 0xffffff : 0xff6b6b;
+    }
   }
 
   private aimAt(point: Vec2): void {
@@ -300,8 +408,10 @@ export class PoolTable {
       if (ball.pocketed) {
         if (!sprite.pocketed) {
           const from = sprite.lastPosition ?? ball.position;
+          const pocket = nearestPocketVisual(from).centre;
 
-          startSink(sprite, nearestPocketVisual(from).centre, performance.now());
+          startSink(sprite, pocket, performance.now());
+          this.activeBursts.push(startPocketBurst(ball.id, pocket, performance.now()));
         }
 
         continue;
@@ -322,5 +432,7 @@ export class PoolTable {
     for (const sprite of this.ballSprites.values()) {
       animateSink(sprite, now, viewport);
     }
+
+    drawPocketBursts(this.bursts, this.activeBursts, now, viewport);
   }
 }

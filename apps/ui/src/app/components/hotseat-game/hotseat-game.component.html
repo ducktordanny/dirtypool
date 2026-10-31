@@ -3,7 +3,11 @@
   [table]="game.table()"
   [interactive]="game.canShoot()"
   [clock]="game.clock()"
+  [announcement]="game.lastShot()"
   (shot)="shoot($event)"
+  (cueMove)="game.moveCueBall($event)"
+  (cuePlace)="game.placeCueBall($event)"
+  (restart)="newGame()"
 />
 <div class="footer">
   <p class="hint">Drag on the table to aim, pull the power bar and let go to shoot.</p>

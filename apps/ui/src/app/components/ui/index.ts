@@ -1,4 +1,7 @@
 export { BallIcon } from './ball-icon/ball-icon.component';
+export { BoardNotice } from './board-notice/board-notice.component';
 export { Button } from './button/button.component';
+export { MatchResult } from './match-result/match-result.component';
+export { OutcomeBanner } from './outcome-banner/outcome-banner.component';
 export { PowerSlider } from './power-slider/power-slider.component';
 export { ShotClockDisplay } from './shot-clock/shot-clock.component';

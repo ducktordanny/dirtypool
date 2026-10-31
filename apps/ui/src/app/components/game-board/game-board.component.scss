@@ -12,7 +12,8 @@ $breakpoint: 640px;
   gap: var(--space-3);
 }
 
-dp-pool-table {
+.stage {
+  position: relative;
   flex: 1;
   min-width: 0;
 }

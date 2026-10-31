@@ -116,12 +116,15 @@ export class PowerSlider {
     this.powerChange.emit(clamped);
   }
 
-  // Works for both orientations: power grows along the longer axis of the track.
+  // Works for both orientations: power grows along the longer axis of the track. Pointers past
+  // either end of the track clamp to the nearest end.
   private powerFromPointer(event: PointerEvent): number {
     const rect = this.host.nativeElement.getBoundingClientRect();
+    const fraction =
+      rect.height >= rect.width
+        ? (event.clientY - rect.top) / rect.height
+        : (event.clientX - rect.left) / rect.width;
 
-    return rect.height >= rect.width
-      ? (event.clientY - rect.top) / rect.height
-      : (event.clientX - rect.left) / rect.width;
+    return Math.min(1, Math.max(0, fraction));
   }
 }

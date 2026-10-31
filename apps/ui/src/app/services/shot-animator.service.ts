@@ -3,7 +3,9 @@ import type { Shot, TableState } from '@dirtypool/contracts';
 import { FIXED_STEP, isAtRest, startShot, stepTable, type TableEvent } from '@dirtypool/game';
 import { FRAME_SCHEDULER } from '../types/frame-scheduler.type';
 
-const MAX_FRAME_SECONDS = 0.1;
+// Browsers throttle frames in unfocused or hidden tabs. Simulating up to a full second per frame
+// keeps a throttled client in real time and lets a paused one catch up within a few frames.
+const MAX_FRAME_SECONDS = 1;
 
 export interface ShotAnimationHandlers {
   onTable(table: TableState): void;

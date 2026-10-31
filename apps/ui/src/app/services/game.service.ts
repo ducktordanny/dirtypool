@@ -1,12 +1,14 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import type { GameState, Shot, TableState } from '@dirtypool/contracts';
+import type { GameState, Shot, TableState, Vec2 } from '@dirtypool/contracts';
 import {
   SHOT_CLOCK_MS,
   createGame,
   forfeitTurn,
+  placeBallInHand,
   resolveShot,
   type TableEvent,
 } from '@dirtypool/game';
+import type { ShotAnnouncement } from '../types/shot-announcement.type';
 import type { ShotClock } from '../types/shot-clock.type';
 import { TIMER_SCHEDULER } from '../types/timer-scheduler.type';
 import { ShotAnimator } from './shot-animator.service';
@@ -18,6 +20,7 @@ export class GameService {
   readonly table = computed(() => this.tableState());
   readonly animating = computed(() => this.animatingState());
   readonly clock = computed(() => this.clockState());
+  readonly lastShot = computed(() => this.lastShotState());
   readonly canShoot = computed(() => !this.animatingState() && this.gameState().phase === 'aiming');
 
   private readonly animator = inject(ShotAnimator);
@@ -26,6 +29,7 @@ export class GameService {
   private readonly tableState = signal<TableState>(this.gameState().table);
   private readonly animatingState = signal(false);
   private readonly clockState = signal<ShotClock | null>(null);
+  private readonly lastShotState = signal<ShotAnnouncement | null>(null);
   private cancelAnimation: (() => void) | null = null;
   private cancelClock: (() => void) | null = null;
 
@@ -41,7 +45,31 @@ export class GameService {
     this.animatingState.set(false);
     this.gameState.set(game);
     this.tableState.set(game.table);
+    this.lastShotState.set(null);
     this.startClock();
+  }
+
+  // Ball in hand: preview the cue ball under the pointer, then commit or snap back on release.
+  moveCueBall(position: Vec2): void {
+    if (this.canShoot() && this.gameState().ballInHand) {
+      this.tableState.set(previewCueBall(this.gameState().table, position));
+    }
+  }
+
+  placeCueBall(position: Vec2): void {
+    const game = this.gameState();
+
+    if (!this.canShoot() || !game.ballInHand) {
+      return;
+    }
+
+    const table = placeBallInHand(game.table, position);
+
+    if (table !== null) {
+      this.gameState.set({ ...game, table });
+    }
+
+    this.tableState.set(table ?? game.table);
   }
 
   shoot(shot: Shot): void {
@@ -64,7 +92,16 @@ export class GameService {
     this.gameState.set(game);
     this.tableState.set(game.table);
     this.animatingState.set(false);
+    this.announce(game);
     this.startClock();
+  }
+
+  private announce(game: GameState): void {
+    if (game.lastOutcome !== null) {
+      const previous = this.lastShotState();
+
+      this.lastShotState.set({ seq: (previous?.seq ?? 0) + 1, outcome: game.lastOutcome });
+    }
   }
 
   private startClock(): void {
@@ -85,8 +122,17 @@ export class GameService {
   }
 
   private expireClock(): void {
+    const game = forfeitTurn(this.gameState());
+
     this.cancelClock = null;
-    this.gameState.set(forfeitTurn(this.gameState()));
+    this.gameState.set(game);
+    this.announce(game);
     this.startClock();
   }
+}
+
+function previewCueBall(table: TableState, position: Vec2): TableState {
+  return {
+    balls: table.balls.map((ball) => (ball.id === 0 ? { ...ball, position } : ball)),
+  };
 }

@@ -5,12 +5,12 @@ import { NicknameService } from '../../services/nickname.service';
 import { RoomService } from '../../services/room.service';
 import { GameBoard } from '../game-board/game-board.component';
 import type { PlayerNames } from '../match-hud/match-hud.component';
-import { Button } from '../ui';
+import { BoardNotice, Button } from '../ui';
 
 const COPIED_FOR_MS = 1500;
 
 @Component({
-  imports: [Button, GameBoard],
+  imports: [BoardNotice, Button, GameBoard],
   selector: 'dp-online-game',
   styleUrl: './online-game.component.scss',
   templateUrl: './online-game.component.html',
@@ -33,10 +33,17 @@ export class OnlineGame {
 
     return [first ?? 'Waiting…', second ?? 'Waiting…'];
   });
-  protected readonly opponentName = computed(() => {
-    const me = this.room.playerIndex();
+  protected readonly opponentName = computed(() => this.room.opponentName());
+  // The opponent's seat emptied after play began: the game is paused until someone takes it.
+  protected readonly opponentLeft = computed(() => {
+    const game = this.room.game();
 
-    return me === null ? null : this.room.roster()[me === 0 ? 1 : 0];
+    return (
+      game !== null &&
+      this.opponentName() === null &&
+      this.room.lastOpponentName() !== null &&
+      game.lastOutcome !== null
+    );
   });
   protected readonly status = computed(() => {
     const game = this.room.game();
@@ -47,14 +54,19 @@ export class OnlineGame {
     }
 
     if (opponent === null) {
-      return game.lastOutcome === null ? 'Waiting for an opponent' : 'Your opponent left';
+      const departed = this.room.lastOpponentName();
+
+      return departed === null || game.lastOutcome === null
+        ? 'Waiting for an opponent'
+        : `${departed} left the game`;
     }
 
     if (game.phase === 'finished') {
       return game.winner === this.room.playerIndex() ? 'You win!' : `${opponent} wins.`;
     }
 
-    return this.room.canShoot() || this.room.animating() ? 'Your turn' : `${opponent}'s turn`;
+    // While a shot rolls the state still names the shooter, so this stays right mid-animation.
+    return game.currentPlayer === this.room.playerIndex() ? 'Your turn' : `${opponent}'s turn`;
   });
 
   private readonly router = inject(Router);

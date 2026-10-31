@@ -46,6 +46,23 @@ describe('PowerSlider', () => {
     expect(host.released).toEqual([0.1]);
   });
 
+  it('clamps a release past the end of the track to full power', () => {
+    const { host, slider } = setup();
+
+    slider.getBoundingClientRect = () =>
+      ({ top: 0, left: 0, width: 32, height: 200, bottom: 200, right: 32 }) as DOMRect;
+    slider.setPointerCapture = () => undefined;
+    slider.releasePointerCapture = () => undefined;
+    slider.dispatchEvent(
+      new PointerEvent('pointerdown', { pointerId: 1, clientX: 16, clientY: 10, bubbles: true }),
+    );
+    slider.dispatchEvent(
+      new PointerEvent('pointerup', { pointerId: 1, clientX: 16, clientY: 480, bubbles: true }),
+    );
+
+    expect(host.released).toEqual([1]);
+  });
+
   it('does not fire below the minimum power', () => {
     const { host, slider } = setup();
 
