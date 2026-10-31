@@ -25,8 +25,11 @@ export function createGame(): GameState {
     winner: null,
     lastOutcome: null,
     pocketedBalls: [],
+    ballInHand: false,
   };
 }
+
+const FOULS: readonly ShotOutcome[] = ['scratch', 'wrong-ball', 'no-contact', 'timeout'];
 
 export function ballGroup(id: BallId): BallGroup | null {
   if (id === CUE_BALL_ID || id === EIGHT_BALL_ID) {
@@ -40,9 +43,11 @@ export function groupBalls(group: BallGroup): readonly BallId[] {
   return group === 'solids' ? SOLIDS : STRIPES;
 }
 
-// 8-ball rules, lightly simplified: the first pocketed ball assigns the groups, you must hit your
-// own group first and pocket one of your own to keep the turn, the 8 goes last. A scratch or a
-// shot without contact passes the turn; the cue ball goes back on the head spot after a scratch.
+// 8-ball rules, lightly simplified. The break keeps the table open whatever drops. After that the
+// first pocketed ball assigns the groups, you must hit your own group first (anything but the 8
+// while the table is open) and pocket one of your own to keep the turn, and the 8 goes last. A
+// scratch or a shot without contact passes the turn; the cue ball goes back on the head spot
+// after a scratch.
 export function resolveShot(
   game: GameState,
   table: TableState,
@@ -53,6 +58,7 @@ export function resolveShot(
   }
 
   const shooter = game.currentPlayer;
+  const breaking = game.lastOutcome === null;
   const pocketedIds = events
     .filter((event) => event.kind === 'pocketed')
     .map((event) => event.ballId);
@@ -60,19 +66,21 @@ export function resolveShot(
   const firstContact = events.find((event) => event.kind === 'cue-contact')?.ballId ?? null;
   const pocketedObjectBalls = pocketedIds.filter((id) => ballGroup(id) !== null);
   const pocketedBalls = [...game.pocketedBalls, ...pocketedIds.filter((id) => id !== CUE_BALL_ID)];
+  const ownBefore = game.players[shooter].group;
   const firstGroup =
     pocketedObjectBalls[0] === undefined ? null : ballGroup(pocketedObjectBalls[0]);
   const assigned =
-    game.players[shooter].group === null && firstGroup !== null && !scratched
+    !breaking && ownBefore === null && firstGroup !== null && !scratched
       ? assignGroups(game.players, shooter, firstGroup)
       : game.players;
   const own = assigned[shooter].group;
   const players = withScores(assigned, table);
   const clearedBeforeShot =
-    own !== null && groupBalls(own).every((id) => isPocketed(game.table, id));
+    ownBefore !== null && groupBalls(ownBefore).every((id) => isPocketed(game.table, id));
 
   if (pocketedIds.includes(EIGHT_BALL_ID)) {
-    const legal = !scratched && clearedBeforeShot;
+    // Sinking the 8 on the break wins outright, as in 8 Ball Pool.
+    const legal = !scratched && (clearedBeforeShot || breaking);
 
     return {
       table,
@@ -82,15 +90,21 @@ export function resolveShot(
       winner: legal ? shooter : other(shooter),
       lastOutcome: legal ? 'eight-ball-win' : 'eight-ball-loss',
       pocketedBalls,
+      ballInHand: false,
     };
   }
 
+  // Judged by the group held before the shot: on an open table any ball but the 8 is fine, and
+  // on the break even the 8 is.
   const legalContact =
     firstContact !== null &&
-    (firstContact === EIGHT_BALL_ID
-      ? clearedBeforeShot
-      : own === null || ballGroup(firstContact) === own);
-  const pocketedOwn = own !== null && pocketedObjectBalls.some((id) => ballGroup(id) === own);
+    (breaking ||
+      (firstContact === EIGHT_BALL_ID
+        ? clearedBeforeShot
+        : ownBefore === null || ballGroup(firstContact) === ownBefore));
+  const pocketedOwn =
+    pocketedObjectBalls.length > 0 &&
+    (own === null || pocketedObjectBalls.some((id) => ballGroup(id) === own));
   const outcome: ShotOutcome = scratched
     ? 'scratch'
     : firstContact === null
@@ -112,6 +126,7 @@ export function resolveShot(
     winner: null,
     lastOutcome: outcome,
     pocketedBalls,
+    ballInHand: FOULS.includes(outcome),
   };
 }
 
@@ -121,7 +136,12 @@ export function forfeitTurn(game: GameState): GameState {
     return game;
   }
 
-  return { ...game, currentPlayer: other(game.currentPlayer), lastOutcome: 'timeout' };
+  return {
+    ...game,
+    currentPlayer: other(game.currentPlayer),
+    lastOutcome: 'timeout',
+    ballInHand: true,
+  };
 }
 
 function assignGroups(

@@ -58,6 +58,8 @@ export const gameStateSchema = z.object({
     .nullable(),
   // Object balls in the order they went down.
   pocketedBalls: z.array(ballIdSchema).max(15),
+  // After a foul the incoming player may put the cue ball anywhere before shooting.
+  ballInHand: z.boolean(),
 });
 export type GameState = z.infer<typeof gameStateSchema>;
 export type ShotOutcome = NonNullable<GameState['lastOutcome']>;

@@ -6,6 +6,9 @@ import {
   CUE_BALL_ID,
   FOOT_SPOT,
   HEAD_SPOT,
+  POCKETS,
+  TABLE_HEIGHT,
+  TABLE_WIDTH,
 } from './table.const.js';
 
 const SQRT3_OVER_2 = 0.8660254037844386;
@@ -48,6 +51,36 @@ export function placeCueBall(table: TableState, preferred: Vec2 = HEAD_SPOT): Ta
   // Walk backwards toward the head rail until the cue ball no longer overlaps anything.
   while (others.some((ball) => overlaps(ball.position, position)) && position.x > BALL_RADIUS) {
     position = { x: position.x - BALL_RADIUS, y: position.y };
+  }
+
+  return {
+    balls: table.balls.map((ball) =>
+      ball.id === CUE_BALL_ID ? createBall(CUE_BALL_ID, position) : ball,
+    ),
+  };
+}
+
+// Ball in hand: the cue ball may go anywhere on the cloth that is clear of other balls and
+// pocket mouths. Returns null when the spot is not allowed.
+export function placeBallInHand(table: TableState, position: Vec2): TableState | null {
+  const inside =
+    position.x >= BALL_RADIUS &&
+    position.x <= TABLE_WIDTH - BALL_RADIUS &&
+    position.y >= BALL_RADIUS &&
+    position.y <= TABLE_HEIGHT - BALL_RADIUS;
+  const clearOfBalls = table.balls.every(
+    (ball) => ball.id === CUE_BALL_ID || ball.pocketed || !overlaps(ball.position, position),
+  );
+  const clearOfPockets = POCKETS.every((pocket) => {
+    const dx = position.x - pocket.position.x;
+    const dy = position.y - pocket.position.y;
+    const reach = pocket.radius + pocket.mouth;
+
+    return dx * dx + dy * dy >= reach * reach;
+  });
+
+  if (!inside || !clearOfBalls || !clearOfPockets) {
+    return null;
   }
 
   return {
