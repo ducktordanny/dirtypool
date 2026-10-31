@@ -1,5 +1,15 @@
-import { Component, computed, input, output, signal } from '@angular/core';
+import {
+  Component,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+  untracked,
+} from '@angular/core';
 import type { Aim, GameState, PlayerIndex, Shot, TableState, Vec2 } from '@dirtypool/contracts';
+import { AudioService } from '../../services/audio.service';
 import { legalTargetIds } from '../../utils/legal-targets.util';
 import type { ShotAnnouncement } from '../../types/shot-announcement.type';
 import type { ShotClock } from '../../types/shot-clock.type';
@@ -54,4 +64,20 @@ export class GameBoard {
           : 'The 8 went down clean.',
     };
   });
+
+  private readonly audio = inject(AudioService);
+
+  constructor() {
+    effect(() => {
+      const announcement = this.announcement();
+
+      untracked(() => {
+        if (announcement !== null) {
+          const celebrate = this.result()?.celebrate ?? false;
+
+          this.audio.shotOutcome(announcement.outcome, celebrate);
+        }
+      });
+    });
+  }
 }

@@ -47,6 +47,8 @@ test('a head-on hit transfers almost all speed to the struck ball', () => {
   }
 
   assert.deepEqual(events[0], { kind: 'cue-contact', ballId: 1 });
+  assert.equal(events[1]?.kind, 'collision');
+  assert.ok(events[1]?.kind === 'collision' && events[1].speed > 1.9 && events[1].speed <= 2);
   assert.ok(table.balls[1]!.velocity.x > 1.8);
   assert.ok(Math.abs(table.balls[0]!.velocity.x) < 0.2);
 });
@@ -87,7 +89,9 @@ test('a cushion reflects the ball back into play', () => {
     power: 0.15,
   });
 
-  assert.ok(events.some((event) => event.kind === 'cushion'));
+  const cushion = events.find((event) => event.kind === 'cushion');
+
+  assert.ok(cushion !== undefined && cushion.speed > 0);
   assert.ok(settled.balls[0]!.position.y < TABLE_HEIGHT - BALL_RADIUS);
   assert.ok(settled.balls[0]!.position.y > TABLE_HEIGHT / 2);
 });

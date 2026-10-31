@@ -5,3 +5,4 @@ export { MatchResult } from './match-result/match-result.component';
 export { OutcomeBanner } from './outcome-banner/outcome-banner.component';
 export { PowerSlider } from './power-slider/power-slider.component';
 export { ShotClockDisplay } from './shot-clock/shot-clock.component';
+export { SoundToggle } from './sound-toggle/sound-toggle.component';

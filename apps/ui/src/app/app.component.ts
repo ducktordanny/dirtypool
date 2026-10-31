@@ -1,10 +1,19 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { RouterLink, RouterOutlet } from '@angular/router';
+import { SoundToggle } from './components/ui';
+import { AudioService } from './services/audio.service';
 
 @Component({
-  imports: [RouterLink, RouterOutlet],
+  imports: [RouterLink, RouterOutlet, SoundToggle],
   selector: 'dp-root',
   styleUrl: './app.component.scss',
   templateUrl: './app.component.html',
+  // Audio can only start inside a user gesture, so the first one anywhere on the page unlocks it.
+  host: {
+    '(pointerdown)': 'audio.unlock()',
+    '(keydown)': 'audio.unlock()',
+  },
 })
-export class App {}
+export class App {
+  protected readonly audio = inject(AudioService);
+}

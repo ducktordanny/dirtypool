@@ -19,7 +19,13 @@ import {
 export type TableEvent =
   | { readonly kind: 'pocketed'; readonly ballId: BallId; readonly pocketIndex: number }
   | { readonly kind: 'cue-contact'; readonly ballId: BallId }
-  | { readonly kind: 'cushion'; readonly ballId: BallId };
+  // Impact speeds are the closing speed along the contact normal, in m/s, for sound.
+  | {
+      readonly kind: 'collision';
+      readonly ballIds: readonly [BallId, BallId];
+      readonly speed: number;
+    }
+  | { readonly kind: 'cushion'; readonly ballId: BallId; readonly speed: number };
 
 export interface StepResult {
   readonly table: TableState;
@@ -128,6 +134,8 @@ function resolveBallCollisions(balls: MutableBall[], events: TableEvent[]): void
       if (a.id === CUE_BALL_ID) {
         events.push({ kind: 'cue-contact', ballId: b.id });
       }
+
+      events.push({ kind: 'collision', ballIds: [a.id, b.id], speed: approachSpeed });
     }
   }
 }
@@ -138,49 +146,54 @@ function resolveCushions(balls: MutableBall[], events: TableEvent[]): void {
       continue;
     }
 
-    let hit = false;
+    let speed = 0;
 
     if (ball.x < BALL_RADIUS) {
       ball.x = BALL_RADIUS;
-      hit = reflectX(ball, -1) || hit;
+      speed = Math.max(speed, reflectX(ball, -1));
     } else if (ball.x > TABLE_WIDTH - BALL_RADIUS) {
       ball.x = TABLE_WIDTH - BALL_RADIUS;
-      hit = reflectX(ball, 1) || hit;
+      speed = Math.max(speed, reflectX(ball, 1));
     }
 
     if (ball.y < BALL_RADIUS) {
       ball.y = BALL_RADIUS;
-      hit = reflectY(ball, -1) || hit;
+      speed = Math.max(speed, reflectY(ball, -1));
     } else if (ball.y > TABLE_HEIGHT - BALL_RADIUS) {
       ball.y = TABLE_HEIGHT - BALL_RADIUS;
-      hit = reflectY(ball, 1) || hit;
+      speed = Math.max(speed, reflectY(ball, 1));
     }
 
-    if (hit) {
-      events.push({ kind: 'cushion', ballId: ball.id });
+    if (speed > 0) {
+      events.push({ kind: 'cushion', ballId: ball.id, speed });
     }
   }
 }
 
-// Reflects only when the ball is still moving into the cushion (outward sign given).
-function reflectX(ball: MutableBall, outward: number): boolean {
-  if (ball.vx * outward <= 0) {
-    return false;
+// Reflects only when the ball is still moving into the cushion (outward sign given) and
+// returns the speed it hit with, 0 when it did not.
+function reflectX(ball: MutableBall, outward: number): number {
+  const inbound = ball.vx * outward;
+
+  if (inbound <= 0) {
+    return 0;
   }
 
   ball.vx = -ball.vx * CUSHION_RESTITUTION;
 
-  return true;
+  return inbound;
 }
 
-function reflectY(ball: MutableBall, outward: number): boolean {
-  if (ball.vy * outward <= 0) {
-    return false;
+function reflectY(ball: MutableBall, outward: number): number {
+  const inbound = ball.vy * outward;
+
+  if (inbound <= 0) {
+    return 0;
   }
 
   ball.vy = -ball.vy * CUSHION_RESTITUTION;
 
-  return true;
+  return inbound;
 }
 
 // Inside the pocket opening the cushions give way.

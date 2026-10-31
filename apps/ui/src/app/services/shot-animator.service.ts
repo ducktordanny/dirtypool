@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import type { Shot, TableState } from '@dirtypool/contracts';
 import { FIXED_STEP, isAtRest, startShot, stepTable, type TableEvent } from '@dirtypool/game';
 import { FRAME_SCHEDULER } from '../types/frame-scheduler.type';
+import { AudioService } from './audio.service';
 
 // Browsers throttle frames in unfocused or hidden tabs. Simulating up to a full second per frame
 // keeps a throttled client in real time and lets a paused one catch up within a few frames.
@@ -17,6 +18,7 @@ export interface ShotAnimationHandlers {
 @Injectable({ providedIn: 'root' })
 export class ShotAnimator {
   private readonly frames = inject(FRAME_SCHEDULER);
+  private readonly audio = inject(AudioService);
 
   // Returns a function that stops the animation without calling `onDone`.
   play(start: TableState, shot: Shot, handlers: ShotAnimationHandlers): () => void {
@@ -39,14 +41,18 @@ export class ShotAnimator {
       lastTimestamp = timestamp;
       accumulator += elapsed;
 
+      const frameEvents: TableEvent[] = [];
+
       while (accumulator >= FIXED_STEP && !isAtRest(table)) {
         const result = stepTable(table);
 
         table = result.table;
-        events.push(...result.events);
+        frameEvents.push(...result.events);
         accumulator -= FIXED_STEP;
       }
 
+      events.push(...frameEvents);
+      this.audio.tableEvents(frameEvents);
       handlers.onTable(table);
 
       if (isAtRest(table)) {
@@ -57,6 +63,7 @@ export class ShotAnimator {
       this.frames.request(frame);
     };
 
+    this.audio.cueStrike(shot.power);
     handlers.onTable(table);
     this.frames.request(frame);
 

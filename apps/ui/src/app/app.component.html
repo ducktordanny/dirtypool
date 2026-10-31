@@ -1,5 +1,6 @@
 <header class="header">
   <a class="title" routerLink="/">Dirty Pool</a>
+  <dp-sound-toggle [muted]="audio.muted()" (toggled)="audio.toggleMuted()" />
 </header>
 <main class="main">
   <router-outlet />
