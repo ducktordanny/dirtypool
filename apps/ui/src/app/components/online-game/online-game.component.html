@@ -40,7 +40,23 @@
       (cuePlace)="room.placeCueBall($event)"
       (restart)="room.restart()"
     >
-      @if (opponentLeft()) {
+      @if (reconnecting()) {
+        <dp-board-notice
+          boardOverlay
+          title="Reconnecting…"
+          text="The connection dropped. Your seat is held while we get you back in."
+        >
+          <dp-button (click)="leave()">Leave</dp-button>
+        </dp-board-notice>
+      } @else if (opponentAway()) {
+        <dp-board-notice
+          boardOverlay
+          [title]="opponentName() + ' lost connection'"
+          text="Their seat is held for two minutes. The game carries on where it was once they are back."
+        >
+          <dp-button (click)="leave()">Leave</dp-button>
+        </dp-board-notice>
+      } @else if (opponentLeft()) {
         <dp-board-notice
           boardOverlay
           [title]="room.lastOpponentName() + ' left the game'"

@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type {
   GameState,
   OpenRoom,
@@ -22,7 +23,11 @@ export type SendMessage = (message: ServerMessage) => void;
 export interface RoomPlayer {
   readonly index: PlayerIndex;
   readonly name: PlayerName;
-  readonly send: SendMessage;
+  readonly token: SeatToken;
+  send: SendMessage;
+  connected: boolean;
+  // Frees the seat if the player does not come back in time.
+  cancelReservation: (() => void) | null;
 }
 
 export interface Room {
@@ -48,14 +53,17 @@ export type ShootResult =
   | { readonly kind: 'finished' }
   | { readonly kind: 'waiting-for-opponent' };
 
-// Timers are injected so tests can fire the shot clock by hand.
+// Timers and randomness are injected so tests can drive them by hand.
 export interface RoomStoreOptions {
   readonly random?: () => number;
   readonly now?: () => number;
   readonly schedule?: (callback: () => void, delayMs: number) => () => void;
+  readonly token?: () => SeatToken;
 }
 
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+// How long a dropped player's seat stays reserved for them.
+export const SEAT_RESERVATION_MS = 120_000;
 
 // Rooms live in memory only: a room dies with the process, which is fine for two friends.
 export class RoomStore {
@@ -63,10 +71,12 @@ export class RoomStore {
   private readonly random: () => number;
   private readonly now: () => number;
   private readonly schedule: (callback: () => void, delayMs: number) => () => void;
+  private readonly token: () => SeatToken;
 
   constructor(options: RoomStoreOptions = {}) {
     this.random = options.random ?? Math.random;
     this.now = options.now ?? Date.now;
+    this.token = options.token ?? (() => randomBytes(16).toString('hex'));
     this.schedule =
       options.schedule ??
       ((callback, delayMs) => {
@@ -84,7 +94,7 @@ export class RoomStore {
     name: PlayerName,
     isPrivate = false,
   ): { readonly room: Room; readonly player: RoomPlayer } {
-    const player: RoomPlayer = { index: 0, name, send };
+    const player = this.seat(0, name, send);
     const room: Room = {
       code: this.uniqueCode(),
       private: isPrivate,
@@ -106,12 +116,13 @@ export class RoomStore {
       return { kind: 'not-found' };
     }
 
+    // A reserved seat still counts as taken until its reservation runs out.
     if (room.players.length >= 2) {
       return { kind: 'full' };
     }
 
     const taken = new Set(room.players.map((existing) => existing.index));
-    const player: RoomPlayer = { index: taken.has(0) ? 1 : 0, name, send };
+    const player = this.seat(taken.has(0) ? 1 : 0, name, send);
 
     room.players.push(player);
     this.armClock(room, 0);
@@ -119,8 +130,36 @@ export class RoomStore {
     return { kind: 'joined', room, player };
   }
 
+  // Takes a reserved seat back; the token is the only proof needed.
+  rejoin(code: RoomCode, token: SeatToken, send: SendMessage): JoinResult {
+    const room = this.rooms.get(code);
+    const player = room?.players.find((seated) => seated.token === token);
+
+    if (room === undefined || player === undefined) {
+      return { kind: 'not-found' };
+    }
+
+    player.cancelReservation?.();
+    player.cancelReservation = null;
+    player.connected = true;
+    player.send = send;
+
+    return { kind: 'joined', room, player };
+  }
+
+  // The socket went away: keep the seat for a while so the player can come back.
+  detach(room: Room, player: RoomPlayer): void {
+    player.connected = false;
+    player.send = () => undefined;
+    player.cancelReservation?.();
+    player.cancelReservation = this.schedule(() => this.leave(room, player), SEAT_RESERVATION_MS);
+  }
+
   leave(room: Room, player: RoomPlayer): void {
     const index = room.players.indexOf(player);
+
+    player.cancelReservation?.();
+    player.cancelReservation = null;
 
     if (index !== -1) {
       room.players.splice(index, 1);
@@ -203,8 +242,11 @@ export class RoomStore {
   }
 
   roster(room: Room): Roster {
-    const seat = (index: PlayerIndex): PlayerName | null =>
-      room.players.find((player) => player.index === index)?.name ?? null;
+    const seat = (index: PlayerIndex): Roster[0] => {
+      const player = room.players.find((seated) => seated.index === index);
+
+      return player === undefined ? null : { name: player.name, connected: player.connected };
+    };
 
     return [seat(0), seat(1)];
   }
@@ -220,6 +262,10 @@ export class RoomStore {
         player.send(message);
       }
     }
+  }
+
+  private seat(index: PlayerIndex, name: PlayerName, send: SendMessage): RoomPlayer {
+    return { index, name, token: this.token(), send, connected: true, cancelReservation: null };
   }
 
   // Starts the clock for the current player once the balls stop (`rollingMs` from now).

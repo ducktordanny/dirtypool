@@ -34,6 +34,8 @@ class FakeSocket implements RoomSocket {
 }
 
 const SHOT = { direction: { x: 1, y: 0 }, power: 0.5 };
+const SEATED_HOST = { name: 'Host', connected: true };
+const SEATED_GUEST = { name: 'Guest', connected: true };
 
 function aimsSent(socket: FakeSocket): unknown[] {
   return socket.sent.filter((message) => (message as { type: string }).type === 'aim');
@@ -46,6 +48,7 @@ describe('RoomService', () => {
   let socket: FakeSocket;
 
   beforeEach(() => {
+    sessionStorage.clear();
     frames = new ManualFrameScheduler();
     timers = new ManualTimerScheduler();
     socket = new FakeSocket();
@@ -67,7 +70,8 @@ describe('RoomService', () => {
       type: 'room-joined',
       code: 'ABCD',
       playerIndex: 1,
-      roster: ['Host', 'Guest'],
+      token: 'guest-token-guest-token',
+      roster: [SEATED_HOST, SEATED_GUEST],
       game: createGame(),
       clock: 30_000,
     });
@@ -84,7 +88,8 @@ describe('RoomService', () => {
       type: 'room-joined',
       code: 'ABCD',
       playerIndex: 0,
-      roster: ['Host', null],
+      token: 'host-token-host-token',
+      roster: [SEATED_HOST, null],
       game: createGame(),
       clock: null,
     });
@@ -123,16 +128,17 @@ describe('RoomService', () => {
       type: 'room-joined',
       code: 'ABCD',
       playerIndex: 0,
-      roster: ['Host', null],
+      token: 'host-token-host-token',
+      roster: [SEATED_HOST, null],
       game: createGame(),
       clock: null,
     });
     await entry;
 
-    socket.receive({ type: 'roster', roster: ['Host', 'Guest'], clock: 30_000 });
+    socket.receive({ type: 'roster', roster: [SEATED_HOST, SEATED_GUEST], clock: 30_000 });
 
     expect(service.playerCount()).toBe(2);
-    expect(service.roster()).toEqual(['Host', 'Guest']);
+    expect(service.roster()).toEqual([SEATED_HOST, SEATED_GUEST]);
     expect(service.clock()?.durationMs).toBe(30_000);
     expect(service.canShoot()).toBe(true);
   });
@@ -296,7 +302,7 @@ describe('RoomService', () => {
 
     expect(service.opponentName()).toBe('Host');
 
-    socket.receive({ type: 'roster', roster: [null, 'Guest'], clock: null });
+    socket.receive({ type: 'roster', roster: [null, SEATED_GUEST], clock: null });
 
     expect(service.opponentName()).toBeNull();
     expect(service.lastOpponentName()).toBe('Host');
@@ -326,24 +332,83 @@ describe('RoomService', () => {
     expect(service.game()?.table.balls[0]?.position).toEqual({ x: 0.5, y: 0.5 });
   });
 
-  it('reports a lost connection and clears the room', async () => {
-    const entry = service.createRoom('Host');
+  it('keeps the room and rejoins the same seat after the socket drops', async () => {
+    await joinAsGuest();
 
+    const dropped = socket;
+
+    socket = new FakeSocket();
+    dropped.onclose?.(new CloseEvent('close'));
+
+    expect(service.connection()).toBe('reconnecting');
+    expect(service.code()).toBe('ABCD');
+    expect(service.game()).not.toBeNull();
+    expect(service.canShoot()).toBe(false);
+    expect(timers.pending).toHaveLength(1);
+
+    timers.fire();
     socket.open();
+
+    expect(socket.sent).toEqual([
+      { type: 'rejoin-room', code: 'ABCD', token: 'guest-token-guest-token' },
+    ]);
+
     socket.receive({
       type: 'room-joined',
       code: 'ABCD',
-      playerIndex: 0,
-      roster: ['Host', null],
-      game: createGame(),
-      clock: null,
+      playerIndex: 1,
+      token: 'guest-token-guest-token',
+      roster: [SEATED_HOST, SEATED_GUEST],
+      game: { ...createGame(), currentPlayer: 1, lastOutcome: 'missed' },
+      clock: 20_000,
     });
-    await entry;
 
-    socket.onclose?.(new CloseEvent('close'));
+    expect(service.connection()).toBe('open');
+    expect(service.canShoot()).toBe(true);
+  });
 
-    expect(service.connection()).toBe('closed');
+  it('resumes a seat remembered for the code and falls back to joining on a stale token', async () => {
+    sessionStorage.setItem(
+      'dirtypool.seat',
+      JSON.stringify({ code: 'ABCD', token: 'old-token-old-token-old' }),
+    );
+
+    const entry = service.joinRoom('ABCD', 'Guest');
+
+    socket.open();
+    expect(socket.sent).toEqual([
+      { type: 'rejoin-room', code: 'ABCD', token: 'old-token-old-token-old' },
+    ]);
+
+    socket.receive({ type: 'error', message: 'Room not found' });
+
+    expect(socket.sent[1]).toEqual({ type: 'join-room', code: 'ABCD', name: 'Guest' });
+
+    socket.receive({
+      type: 'room-joined',
+      code: 'ABCD',
+      playerIndex: 1,
+      token: 'new-token-new-token-new',
+      roster: [SEATED_HOST, SEATED_GUEST],
+      game: createGame(),
+      clock: 30_000,
+    });
+
+    await expect(entry).resolves.toBe('ABCD');
+    expect(JSON.parse(sessionStorage.getItem('dirtypool.seat') ?? 'null')).toEqual({
+      code: 'ABCD',
+      token: 'new-token-new-token-new',
+    });
+  });
+
+  it('leaving gives the seat up and forgets it', async () => {
+    await joinAsGuest();
+
+    service.leave();
+
+    expect(socket.sent.at(-1)).toEqual({ type: 'leave-room' });
+    expect(socket.closed).toBe(true);
     expect(service.code()).toBeNull();
-    expect(service.error()).toBe('Connection lost');
+    expect(sessionStorage.getItem('dirtypool.seat')).toBeNull();
   });
 });

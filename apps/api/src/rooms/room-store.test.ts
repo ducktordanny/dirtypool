@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { ServerMessage } from '@dirtypool/contracts';
-import { RoomStore } from './room-store.js';
+import { RoomStore, SEAT_RESERVATION_MS } from './room-store.js';
 
 test('creates a room with a four-letter code and seats the creator as player 0', () => {
   const store = new RoomStore({ random: () => 0 });
@@ -139,4 +139,58 @@ test('private rooms stay out of the open list but can still be joined by code', 
 
   assert.deepEqual(store.openRooms(), []);
   assert.equal(store.join(room.code, () => undefined, 'Guest').kind, 'joined');
+});
+
+test('a detached seat is reserved, rejoinable by token, and freed when the reservation ends', () => {
+  const timers: { callback: () => void; delayMs: number }[] = [];
+  const store = new RoomStore({
+    random: () => 0,
+    schedule: (callback, delayMs) => {
+      const entry = { callback, delayMs };
+
+      timers.push(entry);
+
+      return () => {
+        const index = timers.indexOf(entry);
+
+        if (index !== -1) {
+          timers.splice(index, 1);
+        }
+      };
+    },
+  });
+  const { room, player: host } = store.create(() => undefined, 'Host');
+  const guest = store.join(room.code, () => undefined, 'Guest');
+
+  assert.equal(guest.kind, 'joined');
+
+  if (guest.kind !== 'joined') {
+    return;
+  }
+
+  store.detach(room, guest.player);
+
+  assert.deepEqual(store.roster(room)[1], { name: 'Guest', connected: false });
+  assert.equal(store.join(room.code, () => undefined, 'Other').kind, 'full');
+  assert.equal(
+    store.rejoin(room.code, 'wrong-token-wrong-token', () => undefined).kind,
+    'not-found',
+  );
+
+  const received: ServerMessage[] = [];
+  const back = store.rejoin(room.code, guest.player.token, (message) => received.push(message));
+
+  assert.equal(back.kind === 'joined' && back.player, guest.player);
+  assert.deepEqual(store.roster(room)[1], { name: 'Guest', connected: true });
+
+  store.detach(room, guest.player);
+
+  const reservation = timers.find((timer) => timer.delayMs === SEAT_RESERVATION_MS);
+
+  assert.notEqual(reservation, undefined);
+  reservation?.callback();
+
+  assert.equal(store.roster(room)[1], null);
+  assert.equal(store.join(room.code, () => undefined, 'Other').kind, 'joined');
+  assert.equal(host.connected, true);
 });

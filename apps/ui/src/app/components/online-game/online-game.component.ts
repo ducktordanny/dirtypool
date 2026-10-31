@@ -31,8 +31,11 @@ export class OnlineGame {
   protected readonly names = computed<PlayerNames>(() => {
     const [first, second] = this.room.roster();
 
-    return [first ?? 'Waiting…', second ?? 'Waiting…'];
+    return [first?.name ?? 'Waiting…', second?.name ?? 'Waiting…'];
   });
+  protected readonly reconnecting = computed(() => this.room.connection() === 'reconnecting');
+  // The opponent's socket dropped; their seat is held while they come back.
+  protected readonly opponentAway = computed(() => this.room.opponentSeat()?.connected === false);
   protected readonly opponentName = computed(() => this.room.opponentName());
   // The opponent's seat emptied after play began: the game is paused until someone takes it.
   protected readonly opponentLeft = computed(() => {
@@ -51,6 +54,14 @@ export class OnlineGame {
 
     if (game === null) {
       return 'Connecting…';
+    }
+
+    if (this.reconnecting()) {
+      return 'Reconnecting…';
+    }
+
+    if (this.opponentAway()) {
+      return `${opponent} is reconnecting…`;
     }
 
     if (opponent === null) {

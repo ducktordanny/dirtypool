@@ -9,6 +9,7 @@ import {
   type PlayerName,
   type RoomCode,
   type Roster,
+  type SeatToken,
   type ServerMessage,
   type Shot,
   type TableState,
@@ -22,32 +23,47 @@ import type { ShotClock } from '../types/shot-clock.type';
 import { TIMER_SCHEDULER } from '../types/timer-scheduler.type';
 import { ShotAnimator } from './shot-animator.service';
 
-export type RoomConnection = 'idle' | 'connecting' | 'open' | 'closed';
+export type RoomConnection = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'closed';
 
 // Aim updates go out at most this often; the last one always gets through.
 const AIM_INTERVAL_MS = 50;
+// Reconnect attempts back off from the first delay up to the cap, then give up at the limit.
+const RECONNECT_FIRST_MS = 1000;
+const RECONNECT_MAX_MS = 10_000;
+const RECONNECT_GIVE_UP_MS = 110_000;
+// Per tab, so two tabs in one browser can hold two different seats.
+const SEAT_STORAGE_KEY = 'dirtypool.seat';
 
 interface PendingEntry {
   resolve(code: RoomCode): void;
   reject(error: Error): void;
+  // Sent instead when the first message is refused, e.g. a stale token falling back to a join.
+  fallback: ClientMessage | null;
+}
+
+interface StoredSeat {
+  readonly code: RoomCode;
+  readonly token: SeatToken;
 }
 
 // One online room seen from this browser. The server owns the rules: every shot is animated
-// locally with the shared simulation, then the broadcast state is adopted.
+// locally with the shared simulation, then the broadcast state is adopted. A dropped socket
+// reconnects on its own and takes the same seat back with its token.
 @Injectable({ providedIn: 'root' })
 export class RoomService {
   readonly connection = computed(() => this.connectionState());
   readonly code = computed(() => this.codeState());
   readonly playerIndex = computed(() => this.playerIndexState());
   readonly roster = computed(() => this.rosterState());
-  readonly opponentName = computed(() => {
+  readonly playerCount = computed(() => this.rosterState().filter((seat) => seat !== null).length);
+  readonly opponentSeat = computed(() => {
     const me = this.playerIndexState();
 
     return me === null ? null : this.rosterState()[me === 0 ? 1 : 0];
   });
+  readonly opponentName = computed(() => this.opponentSeat()?.name ?? null);
   // Stays set after the opponent leaves, so the room can say who left.
   readonly lastOpponentName = computed(() => this.lastOpponentNameState());
-  readonly playerCount = computed(() => this.rosterState().filter((name) => name !== null).length);
   readonly game = computed(() => this.gameState());
   readonly table = computed(() => this.tableState());
   readonly animating = computed(() => this.animatingState());
@@ -61,6 +77,7 @@ export class RoomService {
 
     return (
       game !== null &&
+      this.connectionState() === 'open' &&
       !this.animatingState() &&
       game.phase === 'aiming' &&
       this.playerCount() === 2 &&
@@ -89,11 +106,16 @@ export class RoomService {
   private pendingAim: Aim | null = null;
   private aimTimer: (() => void) | null = null;
   private lastAimAt = Number.NEGATIVE_INFINITY;
+  private seatToken: SeatToken | null = null;
+  private reconnectTimer: (() => void) | null = null;
+  private reconnectDelayMs = RECONNECT_FIRST_MS;
+  private reconnectStartedAt: number | null = null;
 
   createRoom(name: PlayerName, isPrivate = false): Promise<RoomCode> {
-    return this.enter({ type: 'create-room', name, private: isPrivate });
+    return this.enter({ type: 'create-room', name, private: isPrivate }, null);
   }
 
+  // A seat remembered for this code is taken back first; a stale token falls back to joining.
   joinRoom(code: string, name: PlayerName): Promise<RoomCode> {
     const parsed = roomCodeSchema.safeParse(code.trim().toUpperCase());
 
@@ -105,7 +127,12 @@ export class RoomService {
       return Promise.resolve(parsed.data);
     }
 
-    return this.enter({ type: 'join-room', code: parsed.data, name });
+    const stored = readStoredSeat();
+    const join: ClientMessage = { type: 'join-room', code: parsed.data, name };
+
+    return stored !== null && stored.code === parsed.data
+      ? this.enter({ type: 'rejoin-room', code: parsed.data, token: stored.token }, join)
+      : this.enter(join, null);
   }
 
   shoot(shot: Shot): void {
@@ -113,6 +140,23 @@ export class RoomService {
       this.flushAim();
       this.send({ type: 'shoot', shot });
     }
+  }
+
+  // Throttled: sends now if the last update is old enough, otherwise keeps the latest for later.
+  sendAim(aim: Aim): void {
+    if (!this.canShoot()) {
+      return;
+    }
+
+    const elapsed = performance.now() - this.lastAimAt;
+
+    if (elapsed >= AIM_INTERVAL_MS) {
+      this.pushAim(aim);
+      return;
+    }
+
+    this.pendingAim = aim;
+    this.aimTimer ??= this.timers.schedule(() => this.flushAim(), AIM_INTERVAL_MS - elapsed);
   }
 
   // Ball in hand: preview locally while dragging; the server confirms the final spot.
@@ -139,23 +183,6 @@ export class RoomService {
     this.send({ type: 'place-cue', position });
   }
 
-  // Throttled: sends now if the last update is old enough, otherwise keeps the latest for later.
-  sendAim(aim: Aim): void {
-    if (!this.canShoot()) {
-      return;
-    }
-
-    const elapsed = performance.now() - this.lastAimAt;
-
-    if (elapsed >= AIM_INTERVAL_MS) {
-      this.pushAim(aim);
-      return;
-    }
-
-    this.pendingAim = aim;
-    this.aimTimer ??= this.timers.schedule(() => this.flushAim(), AIM_INTERVAL_MS - elapsed);
-  }
-
   restart(): void {
     const game = this.gameState();
 
@@ -164,19 +191,29 @@ export class RoomService {
     }
   }
 
+  // Gives the seat up for good, so nobody waits for a reconnect that is not coming.
   leave(): void {
-    this.socket?.close();
+    this.stopReconnecting();
+
+    if (this.connectionState() === 'open') {
+      this.send({ type: 'leave-room' });
+    }
+
+    const socket = this.socket;
+
     this.socket = null;
+    socket?.close();
     this.resetRoom();
     this.connectionState.set('idle');
   }
 
-  private enter(message: ClientMessage): Promise<RoomCode> {
+  private enter(message: ClientMessage, fallback: ClientMessage | null): Promise<RoomCode> {
+    this.stopReconnecting();
     this.errorState.set(null);
     this.pendingEntry?.reject(new Error('Superseded by another room'));
 
     return new Promise<RoomCode>((resolve, reject) => {
-      this.pendingEntry = { resolve, reject };
+      this.pendingEntry = { resolve, reject, fallback };
       this.connect(() => this.send(message));
     });
   }
@@ -188,9 +225,15 @@ export class RoomService {
       return;
     }
 
-    this.socket?.close();
-    this.resetRoom();
-    this.connectionState.set('connecting');
+    const previous = this.socket;
+
+    this.socket = null;
+    previous?.close();
+
+    if (this.connectionState() !== 'reconnecting') {
+      this.resetRoom();
+      this.connectionState.set('connecting');
+    }
 
     const socket = this.createSocket(roomSocketUrl());
 
@@ -200,20 +243,64 @@ export class RoomService {
       onOpen();
     };
     socket.onmessage = (event) => this.receive(String(event.data));
-    socket.onerror = () => this.failEntry('Could not reach the game server');
+    socket.onerror = () => undefined;
     socket.onclose = () => {
       if (this.socket !== socket) {
         return;
       }
 
-      const wasInRoom = this.codeState() !== null;
-
       this.socket = null;
+      this.onSocketLost();
+    };
+  }
+
+  // Keep the room on screen and try to get the seat back; only give up after a while.
+  private onSocketLost(): void {
+    const inRoom = this.codeState() !== null && this.seatToken !== null;
+
+    if (!inRoom) {
       this.resetRoom();
       this.connectionState.set('closed');
-      this.errorState.set(wasInRoom ? 'Connection lost' : null);
       this.failEntry('Could not reach the game server');
-    };
+      return;
+    }
+
+    this.reconnectStartedAt ??= performance.now();
+
+    if (performance.now() - this.reconnectStartedAt > RECONNECT_GIVE_UP_MS) {
+      this.stopReconnecting();
+      this.resetRoom();
+      this.connectionState.set('closed');
+      this.errorState.set('Connection lost');
+      this.failEntry('Connection lost');
+      return;
+    }
+
+    this.connectionState.set('reconnecting');
+    this.clockState.set(null);
+    this.opponentAimState.set(null);
+    this.reconnectTimer = this.timers.schedule(() => this.tryReconnect(), this.reconnectDelayMs);
+    this.reconnectDelayMs = Math.min(RECONNECT_MAX_MS, this.reconnectDelayMs * 2);
+  }
+
+  private tryReconnect(): void {
+    const code = this.codeState();
+    const token = this.seatToken;
+
+    this.reconnectTimer = null;
+
+    if (code === null || token === null) {
+      return;
+    }
+
+    this.connect(() => this.send({ type: 'rejoin-room', code, token }));
+  }
+
+  private stopReconnecting(): void {
+    this.reconnectTimer?.();
+    this.reconnectTimer = null;
+    this.reconnectDelayMs = RECONNECT_FIRST_MS;
+    this.reconnectStartedAt = null;
   }
 
   private failEntry(message: string): void {
@@ -244,8 +331,11 @@ export class RoomService {
   private handle(message: ServerMessage): void {
     switch (message.type) {
       case 'room-joined':
+        this.stopReconnecting();
         this.codeState.set(message.code);
         this.playerIndexState.set(message.playerIndex);
+        this.seatToken = message.token;
+        storeSeat({ code: message.code, token: message.token });
         this.rosterState.set(message.roster);
         this.rememberOpponent();
         this.adopt(message.game);
@@ -291,19 +381,47 @@ export class RoomService {
         this.lastShotState.set(null);
         this.setClock(message.clock);
         return;
-      case 'error': {
-        const game = this.gameState();
-
-        this.errorState.set(message.message);
-        this.failEntry(message.message);
-
-        // A refused placement leaves the preview where the server does not have it.
-        if (game !== null && !this.animatingState()) {
-          this.tableState.set(game.table);
-        }
+      case 'error':
+        this.handleError(message.message);
         return;
-      }
     }
+  }
+
+  private handleError(message: string): void {
+    const pending = this.pendingEntry;
+    const game = this.gameState();
+
+    if (pending?.fallback) {
+      const fallback = pending.fallback;
+
+      this.pendingEntry = { ...pending, fallback: null };
+      clearStoredSeat();
+      this.send(fallback);
+      return;
+    }
+
+    this.errorState.set(message);
+    this.failEntry(message);
+
+    // A refused placement leaves the preview where the server does not have it.
+    if (game !== null && !this.animatingState()) {
+      this.tableState.set(game.table);
+    }
+  }
+
+  private flushAim(): void {
+    this.aimTimer?.();
+    this.aimTimer = null;
+
+    if (this.pendingAim !== null) {
+      this.pushAim(this.pendingAim);
+    }
+  }
+
+  private pushAim(aim: Aim): void {
+    this.pendingAim = null;
+    this.lastAimAt = performance.now();
+    this.send({ type: 'aim', aim });
   }
 
   // The clock already counts from when the shot was sent, so it is held back until the balls
@@ -342,29 +460,6 @@ export class RoomService {
     );
   }
 
-  private flushAim(): void {
-    this.aimTimer?.();
-    this.aimTimer = null;
-
-    if (this.pendingAim !== null) {
-      this.pushAim(this.pendingAim);
-    }
-  }
-
-  private pushAim(aim: Aim): void {
-    this.pendingAim = null;
-    this.lastAimAt = performance.now();
-    this.send({ type: 'aim', aim });
-  }
-
-  private adopt(game: GameState): void {
-    this.opponentAimState.set(null);
-    this.announce(game);
-    this.gameState.set(game);
-    this.tableState.set(game.table);
-    this.animatingState.set(false);
-  }
-
   private rememberOpponent(): void {
     const opponent = this.opponentName();
 
@@ -381,11 +476,21 @@ export class RoomService {
     }
   }
 
+  private adopt(game: GameState): void {
+    this.opponentAimState.set(null);
+    this.announce(game);
+    this.gameState.set(game);
+    this.tableState.set(game.table);
+    this.animatingState.set(false);
+  }
+
   private resetRoom(): void {
     this.cancelAnimation?.();
     this.cancelAnimation = null;
     this.codeState.set(null);
     this.playerIndexState.set(null);
+    this.seatToken = null;
+    clearStoredSeat();
     this.rosterState.set([null, null]);
     this.lastOpponentNameState.set(null);
     this.gameState.set(null);
@@ -403,4 +508,42 @@ function previewCueBall(table: TableState, position: Vec2): TableState {
   return {
     balls: table.balls.map((ball) => (ball.id === 0 ? { ...ball, position } : ball)),
   };
+}
+
+function readStoredSeat(): StoredSeat | null {
+  try {
+    const raw = sessionStorage.getItem(SEAT_STORAGE_KEY);
+    const parsed: unknown = raw === null ? null : JSON.parse(raw);
+
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      'code' in parsed &&
+      'token' in parsed &&
+      typeof parsed.code === 'string' &&
+      typeof parsed.token === 'string'
+    ) {
+      return { code: parsed.code, token: parsed.token };
+    }
+  } catch {
+    // Blocked storage just means no seat to resume.
+  }
+
+  return null;
+}
+
+function storeSeat(seat: StoredSeat): void {
+  try {
+    sessionStorage.setItem(SEAT_STORAGE_KEY, JSON.stringify(seat));
+  } catch {
+    // Without storage a refresh starts over; play still works.
+  }
+}
+
+function clearStoredSeat(): void {
+  try {
+    sessionStorage.removeItem(SEAT_STORAGE_KEY);
+  } catch {
+    // Nothing to clear.
+  }
 }

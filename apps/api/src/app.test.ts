@@ -82,7 +82,10 @@ test('two sockets can create and join a room and the host can shoot', async (con
   assert.equal(guestJoined.type === 'room-joined' && guestJoined.playerIndex, 1);
   const roster = await host.next('roster');
 
-  assert.equal(roster.type === 'roster' && roster.roster.join(','), 'Host,Guest');
+  assert.deepEqual(roster.type === 'roster' && roster.roster.map((seat) => seat?.name), [
+    'Host',
+    'Guest',
+  ]);
   assert.ok(roster.type === 'roster' && roster.clock !== null && roster.clock > 0);
 
   host.send({ type: 'aim', aim: { direction: { x: 0, y: 1 }, power: 0.3 } });
@@ -99,6 +102,49 @@ test('two sockets can create and join a room and the host can shoot', async (con
 
   assert.deepEqual(hostShot, guestShot);
   assert.equal(hostShot.type === 'shot-played' && hostShot.playerIndex, 0);
+});
+
+test('a dropped player keeps their seat and takes it back with the token', async (context) => {
+  const app = buildApp({ appOrigin: 'http://localhost:4200', rooms: new RoomStore() });
+  context.after(async () => app.close());
+
+  const url = await listen(app);
+  const host = await SocketClient.connect(url);
+  const guest = await SocketClient.connect(url);
+  context.after(async () => host.close());
+
+  host.send({ type: 'create-room', name: 'Host', private: false });
+  const joined = await host.next('room-joined');
+
+  if (joined.type !== 'room-joined') {
+    assert.fail('host did not join');
+  }
+
+  guest.send({ type: 'join-room', code: joined.code, name: 'Guest' });
+  const guestJoined = await guest.next('room-joined');
+  await host.next('roster');
+
+  if (guestJoined.type !== 'room-joined') {
+    assert.fail('guest did not join');
+  }
+
+  await guest.close();
+  const dropped = await host.next('roster');
+
+  assert.deepEqual(dropped.type === 'roster' && dropped.roster[1], {
+    name: 'Guest',
+    connected: false,
+  });
+
+  const again = await SocketClient.connect(url);
+  context.after(async () => again.close());
+
+  again.send({ type: 'rejoin-room', code: joined.code, token: guestJoined.token });
+  const rejoined = await again.next('room-joined');
+  const back = await host.next('roster');
+
+  assert.equal(rejoined.type === 'room-joined' && rejoined.playerIndex, 1);
+  assert.deepEqual(back.type === 'roster' && back.roster[1], { name: 'Guest', connected: true });
 });
 
 test('malformed messages are answered with an error instead of closing the socket', async (context) => {
@@ -172,6 +218,11 @@ class SocketClient {
   }
 
   close(): Promise<void> {
+    // A socket the server already closed never fires 'close' again.
+    if (this.socket.readyState === WebSocket.CLOSED) {
+      return Promise.resolve();
+    }
+
     return new Promise((resolve) => {
       this.socket.once('close', () => resolve());
       this.socket.close();
