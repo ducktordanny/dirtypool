@@ -3,7 +3,7 @@ import {
   type Aim,
   type ClientMessage,
   type Shot,
-  type TrapKind,
+  type TrapRequest,
   type Vec2,
 } from '@dirtypool/contracts';
 import type { JoinResult, Room, RoomPlayer, RoomStore, SendMessage } from './room-store.js';
@@ -76,7 +76,7 @@ export class RoomConnection {
         this.placeCue(message.position);
         return;
       case 'place-trap':
-        this.placeTrap(message.kind, message.position, message.direction);
+        this.placeTrap(message);
         return;
       case 'shoot':
         this.shoot(message.shot);
@@ -176,14 +176,14 @@ export class RoomConnection {
     this.rooms.broadcast(room, { type: 'cue-placed', position });
   }
 
-  private placeTrap(kind: TrapKind, position: Vec2, direction?: Vec2): void {
+  private placeTrap(request: TrapRequest): void {
     if (this.membership === null) {
       this.send({ type: 'error', message: 'Join a room first' });
       return;
     }
 
     const { room, player } = this.membership;
-    const result = this.rooms.placeTrap(room, player, kind, position, direction);
+    const result = this.rooms.placeTrap(room, player, request);
 
     if (result !== 'placed') {
       this.send({ type: 'error', message: TRAP_ERRORS[result] });

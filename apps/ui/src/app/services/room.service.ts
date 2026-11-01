@@ -13,6 +13,7 @@ import {
   type ServerMessage,
   type Shot,
   type TableState,
+  type TrapRequest,
   type Vec2,
 } from '@dirtypool/contracts';
 import { SHOT_CLOCK_MS, placeBallInHand } from '@dirtypool/game';
@@ -22,7 +23,6 @@ import type { RemoteShot } from '../types/remote-shot.type';
 import type { ShotAnnouncement } from '../types/shot-announcement.type';
 import type { ShotClock } from '../types/shot-clock.type';
 import { TIMER_SCHEDULER } from '../types/timer-scheduler.type';
-import type { TrapDrop } from '../types/trap-drop.type';
 import { ShotAnimator } from './shot-animator.service';
 
 export type RoomConnection = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'closed';
@@ -189,13 +189,9 @@ export class RoomService {
   }
 
   // The server checks the pouch and the spot; its broadcast puts the trap on both tables.
-  placeTrap({ kind, position, direction }: TrapDrop): void {
+  placeTrap(request: TrapRequest): void {
     if (this.canShoot()) {
-      this.send(
-        direction === undefined
-          ? { type: 'place-trap', kind, position }
-          : { type: 'place-trap', kind, position, direction },
-      );
+      this.send({ type: 'place-trap', ...request });
     }
   }
 

@@ -45,5 +45,15 @@ test('accepts a place-trap message for a known trap kind only', () => {
   assert.equal(place('well'), true);
   assert.equal(place('wall'), true);
   assert.equal(place('hole'), true);
+  assert.equal(place('plug'), true);
   assert.equal(place('portal'), false);
+  assert.equal(
+    clientMessageSchema.safeParse({
+      type: 'place-trap',
+      kind: 'magnet',
+      position: { x: 1, y: 0.5 },
+      group: 'stripes',
+    }).success,
+    true,
+  );
 });

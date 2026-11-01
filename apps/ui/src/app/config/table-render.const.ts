@@ -56,6 +56,16 @@ export const TRAP_COLORS = {
   wallEdge: 0x5c6472,
   hole: 0x120606,
   holeGlow: 0xff7a2f,
+  spring: 0x3fbf6e,
+  springCoil: 0xd4f5df,
+  fan: 0x9ad9ff,
+  mud: 0x6b4a2b,
+  mudDark: 0x3f2a14,
+  ice: 0xcfefff,
+  plug: 0x2b2f36,
+  plugRim: 0x6b7280,
+  magnetSolids: 0xffd34d,
+  magnetStripes: 0xff5a5a,
 } as const;
 
 // Marks what belongs to whom on the table: player 1 gold, player 2 cyan.

@@ -137,7 +137,10 @@ test('a trap goes down on your own turn only, once per shot, and ages with the s
   const store = new RoomStore({ random: () => 0, schedule: () => () => undefined });
   const { room, player: host } = store.create(() => undefined, 'Host');
 
-  assert.equal(store.placeTrap(room, host, 'bumper', { x: 0.5, y: 0.3 }), 'not-your-turn');
+  assert.equal(
+    store.placeTrap(room, host, { kind: 'bumper', position: { x: 0.5, y: 0.3 } }),
+    'not-your-turn',
+  );
 
   const guest = store.join(room.code, () => undefined, 'Guest');
 
@@ -147,11 +150,26 @@ test('a trap goes down on your own turn only, once per shot, and ages with the s
     return;
   }
 
-  assert.equal(store.placeTrap(room, guest.player, 'bumper', { x: 0.5, y: 0.3 }), 'not-your-turn');
-  assert.equal(store.placeTrap(room, host, 'bumper', { x: 0.03, y: 0.3 }), 'blocked');
-  assert.equal(store.placeTrap(room, host, 'bumper', { x: 0.5, y: 0.3 }), 'placed');
-  assert.equal(store.placeTrap(room, host, 'well', { x: 1, y: 0.8 }), 'already-placed');
-  assert.equal(store.placeTrap(room, host, 'wall', { x: 1, y: 0.8 }), 'already-placed');
+  assert.equal(
+    store.placeTrap(room, guest.player, { kind: 'bumper', position: { x: 0.5, y: 0.3 } }),
+    'not-your-turn',
+  );
+  assert.equal(
+    store.placeTrap(room, host, { kind: 'bumper', position: { x: 0.03, y: 0.3 } }),
+    'blocked',
+  );
+  assert.equal(
+    store.placeTrap(room, host, { kind: 'bumper', position: { x: 0.5, y: 0.3 } }),
+    'placed',
+  );
+  assert.equal(
+    store.placeTrap(room, host, { kind: 'well', position: { x: 1, y: 0.8 } }),
+    'already-placed',
+  );
+  assert.equal(
+    store.placeTrap(room, host, { kind: 'wall', position: { x: 1, y: 0.8 } }),
+    'already-placed',
+  );
   assert.equal(room.game.players[0].trapsLeft, 3);
   assert.equal(room.game.table.traps.length, 1);
 
@@ -162,8 +180,18 @@ test('a trap goes down on your own turn only, once per shot, and ages with the s
 
   room.game = { ...room.game, currentPlayer: 0 };
 
-  assert.equal(store.placeTrap(room, host, 'wall', { x: 1, y: 0.8 }), 'blocked');
-  assert.equal(store.placeTrap(room, host, 'wall', { x: 1, y: 0.8 }, { x: 0, y: 1 }), 'placed');
+  assert.equal(
+    store.placeTrap(room, host, { kind: 'wall', position: { x: 1, y: 0.8 } }),
+    'blocked',
+  );
+  assert.equal(
+    store.placeTrap(room, host, {
+      kind: 'wall',
+      position: { x: 1, y: 0.8 },
+      direction: { x: 0, y: 1 },
+    }),
+    'placed',
+  );
   assert.deepEqual(room.game.table.traps[1]?.direction, { x: 0, y: 1 });
 });
 

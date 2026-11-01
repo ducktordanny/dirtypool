@@ -1,4 +1,4 @@
-import type { Ball, BallId, TableState, Trap } from '@dirtypool/contracts';
+import type { Ball, BallId, TableState, Trap, Vec2 } from '@dirtypool/contracts';
 import {
   BALL_DIAMETER,
   BALL_RADIUS,
@@ -7,16 +7,26 @@ import {
   BUMPER_RESTITUTION,
   CUE_BALL_ID,
   CUSHION_RESTITUTION,
+  EIGHT_BALL_ID,
+  FAN_HALF_WIDTH,
+  FAN_PUSH,
+  FAN_REACH,
   FIXED_STEP,
   HOLE_RADIUS,
+  ICE_FRICTION,
+  ICE_RADIUS,
   LIP_OVERLAP,
   LIP_PULL,
+  MUD_FRICTION,
+  MUD_RADIUS,
   POCKETS,
   REST_SPEED,
   ROLLING_DECELERATION,
   SIDE_SPIN_GRIP,
   SPEED_DRAG,
   SPIN_DECAY,
+  SPRING_MAX_EXIT,
+  SPRING_RESTITUTION,
   TABLE_HEIGHT,
   TABLE_WIDTH,
   WALL_HALF_LENGTH,
@@ -75,26 +85,33 @@ export function isAtRest(table: TableState): boolean {
 export function stepTable(table: TableState): StepResult {
   const balls = table.balls.map(toMutable);
   const events: TableEvent[] = [];
+  const plugged = pluggedPockets(table.traps);
 
-  integrate(balls, table.traps);
+  integrate(balls, table.traps, plugged);
   resolveBallCollisions(balls, events);
   resolveBumpers(balls, table.traps, events);
   resolveWalls(balls, table.traps, events);
-  resolveCushions(balls, events);
-  pullIntoPockets(balls);
-  capturePockets(balls, events);
+  resolveCushions(balls, table.traps, plugged, events);
+  pullIntoPockets(balls, plugged);
+  capturePockets(balls, plugged, events);
   swallow(balls, table.traps, events);
 
   return { table: { balls: balls.map(toBall), traps: table.traps }, events };
 }
 
-function integrate(balls: MutableBall[], traps: readonly Trap[]): void {
+function integrate(
+  balls: MutableBall[],
+  traps: readonly Trap[],
+  plugged: readonly boolean[],
+): void {
   for (const ball of balls) {
     if (ball.pocketed) {
       continue;
     }
 
-    const well = wellPull(ball, traps);
+    const well = fieldPull(ball, traps);
+    const cloth = clothFriction(ball, traps);
+    const friction = ROLLING_DECELERATION * cloth;
     const speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
 
     if (speed === 0) {
@@ -105,14 +122,13 @@ function integrate(balls: MutableBall[], traps: readonly Trap[]): void {
       ball.sy = decay(ball.sy, SPIN_DECAY * FIXED_STEP);
     }
 
-    const slowed = speed - (ROLLING_DECELERATION + SPEED_DRAG * speed) * FIXED_STEP;
-    // On a pocket lip the ball keeps creeping until it drops, however slow it is, and a well
-    // that out-pulls the cloth keeps it rolling back towards the bottom unless another ball is
-    // already in the way.
+    const slowed = speed - (friction + SPEED_DRAG * cloth * speed) * FIXED_STEP;
+    // On a pocket lip the ball keeps creeping until it drops, however slow it is, and a field
+    // that out-pulls the cloth keeps it moving unless another ball is already in the way.
     const resting =
       slowed <= REST_SPEED &&
-      !onPocketLip(ball) &&
-      (well.strength <= ROLLING_DECELERATION || propped(ball, balls, well));
+      !onPocketLip(ball, plugged) &&
+      (well.strength <= friction || propped(ball, balls, well));
     const factor = resting || speed === 0 ? 0 : Math.max(slowed, 0) / speed;
 
     ball.vx *= factor;
@@ -215,12 +231,33 @@ function propped(ball: MutableBall, balls: readonly MutableBall[], pull: WellPul
   });
 }
 
-// Resting balls feel a well too: one left on the slope rolls in as soon as the table is stepped.
-function wellPull(ball: MutableBall, traps: readonly Trap[]): WellPull {
+// Every field acting on the ball: wells and holes pull everything, a magnet pulls its group only
+// and a fan pushes along its direction while the ball is over it. Resting balls feel them too, so
+// one left on a slope or under a fan moves as soon as the table is stepped.
+function fieldPull(ball: MutableBall, traps: readonly Trap[]): WellPull {
   const result: WellPull = { x: 0, y: 0, strength: 0, damping: 1 };
 
   for (const trap of traps) {
-    if (trap.kind !== 'well' && trap.kind !== 'hole') {
+    if (trap.kind === 'fan' && trap.direction !== undefined) {
+      const along = trap.direction;
+      const dx = ball.x - trap.position.x;
+      const dy = ball.y - trap.position.y;
+      const forward = dx * along.x + dy * along.y;
+      const sideways = -dx * along.y + dy * along.x;
+
+      if (Math.abs(forward) < FAN_REACH && Math.abs(sideways) < FAN_HALF_WIDTH) {
+        result.x += along.x * FAN_PUSH;
+        result.y += along.y * FAN_PUSH;
+        result.strength = Math.max(result.strength, FAN_PUSH);
+      }
+
+      continue;
+    }
+
+    if (
+      (trap.kind !== 'well' && trap.kind !== 'hole' && trap.kind !== 'magnet') ||
+      (trap.kind === 'magnet' && trap.group !== ballGroupOf(ball.id))
+    ) {
       continue;
     }
 
@@ -244,12 +281,59 @@ function wellPull(ball: MutableBall, traps: readonly Trap[]): WellPull {
   return result;
 }
 
-// A bumper is a fixed post: the ball is pushed out and its approach speed bounces back.
+function ballGroupOf(id: BallId): 'solids' | 'stripes' | null {
+  if (id === CUE_BALL_ID || id === EIGHT_BALL_ID) {
+    return null;
+  }
+
+  return id < EIGHT_BALL_ID ? 'solids' : 'stripes';
+}
+
+// How much harder (mud) or easier (ice) the cloth under the ball lets it roll.
+function clothFriction(ball: MutableBall, traps: readonly Trap[]): number {
+  let factor = 1;
+
+  for (const trap of traps) {
+    if (trap.kind === 'mud' && within(ball, trap.position, MUD_RADIUS)) {
+      factor *= MUD_FRICTION;
+    } else if (trap.kind === 'ice' && within(ball, trap.position, ICE_RADIUS)) {
+      factor *= ICE_FRICTION;
+    }
+  }
+
+  return factor;
+}
+
+function onIce(ball: MutableBall, traps: readonly Trap[]): boolean {
+  return traps.some((trap) => trap.kind === 'ice' && within(ball, trap.position, ICE_RADIUS));
+}
+
+function within(ball: MutableBall, point: Vec2, reach: number): boolean {
+  const dx = ball.x - point.x;
+  const dy = ball.y - point.y;
+
+  return dx * dx + dy * dy < reach * reach;
+}
+
+// Pockets closed by a plug, by index.
+function pluggedPockets(traps: readonly Trap[]): boolean[] {
+  return POCKETS.map((pocket) =>
+    traps.some(
+      (trap) =>
+        trap.kind === 'plug' &&
+        trap.position.x === pocket.position.x &&
+        trap.position.y === pocket.position.y,
+    ),
+  );
+}
+
+// A bumper is a fixed post: the ball is pushed out and its approach speed bounces back. A spring
+// throws it back faster, up to a cap so two springs cannot feed each other forever.
 function resolveBumpers(balls: MutableBall[], traps: readonly Trap[], events: TableEvent[]): void {
   const reach = BALL_RADIUS + BUMPER_RADIUS;
 
   for (const trap of traps) {
-    if (trap.kind !== 'bumper') {
+    if (trap.kind !== 'bumper' && trap.kind !== 'spring') {
       continue;
     }
 
@@ -279,8 +363,13 @@ function resolveBumpers(balls: MutableBall[], traps: readonly Trap[], events: Ta
         continue;
       }
 
-      ball.vx += (1 + BUMPER_RESTITUTION) * inbound * nx;
-      ball.vy += (1 + BUMPER_RESTITUTION) * inbound * ny;
+      const exit =
+        trap.kind === 'spring'
+          ? Math.min(SPRING_MAX_EXIT, inbound * SPRING_RESTITUTION)
+          : inbound * BUMPER_RESTITUTION;
+
+      ball.vx += (inbound + exit) * nx;
+      ball.vy += (inbound + exit) * ny;
       events.push({ kind: 'bumper', trapId: trap.id, ballId: ball.id, speed: inbound });
     }
   }
@@ -335,9 +424,14 @@ function resolveWalls(balls: MutableBall[], traps: readonly Trap[], events: Tabl
   }
 }
 
-function resolveCushions(balls: MutableBall[], events: TableEvent[]): void {
+function resolveCushions(
+  balls: MutableBall[],
+  traps: readonly Trap[],
+  plugged: readonly boolean[],
+  events: TableEvent[],
+): void {
   for (const ball of balls) {
-    if (ball.pocketed || inPocketMouth(ball)) {
+    if (ball.pocketed || inPocketMouth(ball, plugged)) {
       continue;
     }
 
@@ -360,7 +454,11 @@ function resolveCushions(balls: MutableBall[], events: TableEvent[]): void {
     }
 
     if (speed > 0) {
-      applySideSpin(ball, speed);
+      // Side spin needs grip, and there is none on ice.
+      if (!onIce(ball, traps)) {
+        applySideSpin(ball, speed);
+      }
+
       events.push({ kind: 'cushion', ballId: ball.id, speed });
     }
   }
@@ -444,8 +542,12 @@ function reflectY(ball: MutableBall, outward: number): number {
 }
 
 // Inside the pocket opening the cushions give way.
-function inPocketMouth(ball: MutableBall): boolean {
-  return POCKETS.some((pocket) => {
+function inPocketMouth(ball: MutableBall, plugged: readonly boolean[]): boolean {
+  return POCKETS.some((pocket, index) => {
+    if (plugged[index] === true) {
+      return false;
+    }
+
     const dx = ball.x - pocket.position.x;
     const dy = ball.y - pocket.position.y;
     const reach = pocket.radius + pocket.mouth;
@@ -455,14 +557,18 @@ function inPocketMouth(ball: MutableBall): boolean {
 }
 
 // Overlapping the hole enough to tip in, or already past the nose line inside the mouth.
-function onPocketLip(ball: MutableBall): boolean {
+function onPocketLip(ball: MutableBall, plugged: readonly boolean[]): boolean {
   const pastNose =
     ball.x < BALL_RADIUS ||
     ball.x > TABLE_WIDTH - BALL_RADIUS ||
     ball.y < BALL_RADIUS ||
     ball.y > TABLE_HEIGHT - BALL_RADIUS;
 
-  return POCKETS.some((pocket) => {
+  return POCKETS.some((pocket, index) => {
+    if (plugged[index] === true) {
+      return false;
+    }
+
     const dx = ball.x - pocket.position.x;
     const dy = ball.y - pocket.position.y;
     const squared = dx * dx + dy * dy;
@@ -474,13 +580,17 @@ function onPocketLip(ball: MutableBall): boolean {
 }
 
 // A ball on a pocket lip rolls in instead of stopping on the edge.
-function pullIntoPockets(balls: MutableBall[]): void {
+function pullIntoPockets(balls: MutableBall[], plugged: readonly boolean[]): void {
   for (const ball of balls) {
-    if (ball.pocketed || !onPocketLip(ball)) {
+    if (ball.pocketed || !onPocketLip(ball, plugged)) {
       continue;
     }
 
-    for (const pocket of POCKETS) {
+    for (const [index, pocket] of POCKETS.entries()) {
+      if (plugged[index] === true) {
+        continue;
+      }
+
       const dx = pocket.position.x - ball.x;
       const dy = pocket.position.y - ball.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
@@ -522,7 +632,11 @@ function swallow(balls: MutableBall[], traps: readonly Trap[], events: TableEven
   }
 }
 
-function capturePockets(balls: MutableBall[], events: TableEvent[]): void {
+function capturePockets(
+  balls: MutableBall[],
+  plugged: readonly boolean[],
+  events: TableEvent[],
+): void {
   for (const ball of balls) {
     if (ball.pocketed) {
       continue;
@@ -531,7 +645,7 @@ function capturePockets(balls: MutableBall[], events: TableEvent[]): void {
     for (let pocketIndex = 0; pocketIndex < POCKETS.length; pocketIndex += 1) {
       const pocket = POCKETS[pocketIndex];
 
-      if (pocket === undefined) {
+      if (pocket === undefined || plugged[pocketIndex] === true) {
         continue;
       }
 

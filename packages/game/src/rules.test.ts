@@ -4,8 +4,14 @@ import type { GameState, TableState, Trap } from '@dirtypool/contracts';
 import type { TableEvent } from './physics.js';
 import { SOLIDS, createGame, forfeitTurn, resolveShot } from './rules.js';
 import { placeBallInHand } from './rack.js';
-import { FOOT_SPOT, HEAD_SPOT, TRAPS_PER_PLAYER, TRAP_LIFETIME_SHOTS } from './table.const.js';
-import { canPlaceTrap, placeTrap } from './traps.js';
+import {
+  FOOT_SPOT,
+  HEAD_SPOT,
+  POCKETS,
+  TRAPS_PER_PLAYER,
+  TRAP_LIFETIME_SHOTS,
+} from './table.const.js';
+import { canPlaceTrap, placeTrap, snapTrapPosition } from './traps.js';
 
 test('the break keeps the table open: pots keep the turn, any first contact is fine', () => {
   const game = createGame();
@@ -160,7 +166,7 @@ test('running out the shot clock passes the turn', () => {
 
 test('the player on turn drops one trap per shot from a limited pouch', () => {
   const game = createGame();
-  const first = placeTrap(game, 'bumper', { x: 0.5, y: 0.3 });
+  const first = placeTrap(game, { kind: 'bumper', position: { x: 0.5, y: 0.3 } });
 
   assert.equal(first.kind, 'placed');
 
@@ -179,16 +185,22 @@ test('the player on turn drops one trap per shot from a limited pouch', () => {
       shotsLeft: TRAP_LIFETIME_SHOTS,
     },
   ]);
-  assert.equal(placeTrap(first.game, 'well', { x: 1, y: 0.8 }).kind, 'already-placed');
+  assert.equal(
+    placeTrap(first.game, { kind: 'well', position: { x: 1, y: 0.8 } }).kind,
+    'already-placed',
+  );
 
   const empty: GameState = {
     ...game,
     players: [{ ...game.players[0], trapsLeft: 0 }, game.players[1]],
   };
 
-  assert.equal(placeTrap(empty, 'well', { x: 1, y: 0.8 }).kind, 'no-traps-left');
   assert.equal(
-    placeTrap({ ...game, phase: 'finished' }, 'well', { x: 1, y: 0.8 }).kind,
+    placeTrap(empty, { kind: 'well', position: { x: 1, y: 0.8 } }).kind,
+    'no-traps-left',
+  );
+  assert.equal(
+    placeTrap({ ...game, phase: 'finished' }, { kind: 'well', position: { x: 1, y: 0.8 } }).kind,
     'not-aiming',
   );
 });
@@ -197,24 +209,83 @@ test('traps need clear cloth away from balls, pockets and each other', () => {
   const table = createGame().table;
   const placed: TableState = { ...table, traps: [bumper(0, 0.5, 0.3)] };
 
-  assert.equal(canPlaceTrap(table, 'bumper', { x: 0.5, y: 0.3 }), true);
-  assert.equal(canPlaceTrap(table, 'bumper', { x: 0.03, y: 0.5 }), false);
-  assert.equal(canPlaceTrap(table, 'bumper', { x: 0.1, y: 0.1 }), false);
-  assert.equal(canPlaceTrap(table, 'well', { x: HEAD_SPOT.x + 0.05, y: HEAD_SPOT.y }), false);
-  assert.equal(canPlaceTrap(placed, 'well', { x: 0.55, y: 0.3 }), false);
-  assert.equal(canPlaceTrap(placed, 'well', { x: 0.7, y: 0.3 }), true);
+  assert.equal(canPlaceTrap(table, { kind: 'bumper', position: { x: 0.5, y: 0.3 } }), true);
+  assert.equal(canPlaceTrap(table, { kind: 'bumper', position: { x: 0.03, y: 0.5 } }), false);
+  assert.equal(canPlaceTrap(table, { kind: 'bumper', position: { x: 0.1, y: 0.1 } }), false);
   assert.equal(
-    placeTrap({ ...createGame(), table: placed }, 'well', { x: 0.55, y: 0.3 }).kind,
+    canPlaceTrap(table, { kind: 'well', position: { x: HEAD_SPOT.x + 0.05, y: HEAD_SPOT.y } }),
+    false,
+  );
+  assert.equal(canPlaceTrap(placed, { kind: 'well', position: { x: 0.55, y: 0.3 } }), false);
+  assert.equal(canPlaceTrap(placed, { kind: 'well', position: { x: 0.7, y: 0.3 } }), true);
+  assert.equal(
+    placeTrap({ ...createGame(), table: placed }, { kind: 'well', position: { x: 0.55, y: 0.3 } })
+      .kind,
     'blocked',
   );
   assert.equal(placeBallInHand(placed, { x: 0.52, y: 0.3 }), null);
 
   // A wall needs a direction and is checked along its whole length.
-  assert.equal(canPlaceTrap(table, 'wall', { x: 1, y: 0.3 }), false);
-  assert.equal(canPlaceTrap(table, 'wall', { x: 1, y: 0.3 }, { x: 1, y: 0 }), true);
-  assert.equal(canPlaceTrap(placed, 'wall', { x: 0.57, y: 0.3 }, { x: 1, y: 0 }), false);
-  assert.equal(canPlaceTrap(placed, 'wall', { x: 0.57, y: 0.3 }, { x: 0, y: 1 }), true);
+  assert.equal(canPlaceTrap(table, { kind: 'wall', position: { x: 1, y: 0.3 } }), false);
+  assert.equal(
+    canPlaceTrap(table, { kind: 'wall', position: { x: 1, y: 0.3 }, direction: { x: 1, y: 0 } }),
+    true,
+  );
+  assert.equal(
+    canPlaceTrap(placed, {
+      kind: 'wall',
+      position: { x: 0.57, y: 0.3 },
+      direction: { x: 1, y: 0 },
+    }),
+    false,
+  );
+  assert.equal(
+    canPlaceTrap(placed, {
+      kind: 'wall',
+      position: { x: 0.57, y: 0.3 },
+      direction: { x: 0, y: 1 },
+    }),
+    true,
+  );
   assert.equal(placeBallInHand({ ...table, traps: [wall(1, 1, 0.3)] }, { x: 1.07, y: 0.3 }), null);
+
+  // Fans need a direction and magnets a group.
+  assert.equal(canPlaceTrap(table, { kind: 'fan', position: { x: 1, y: 0.3 } }), false);
+  assert.equal(
+    canPlaceTrap(table, { kind: 'fan', position: { x: 1, y: 0.3 }, direction: { x: 0, y: 1 } }),
+    true,
+  );
+  assert.equal(canPlaceTrap(table, { kind: 'magnet', position: { x: 1, y: 0.3 } }), false);
+  assert.equal(
+    canPlaceTrap(table, { kind: 'magnet', position: { x: 1, y: 0.3 }, group: 'solids' }),
+    true,
+  );
+});
+
+test('a plug snaps onto the pocket it is dropped near and each pocket takes one', () => {
+  const game = createGame();
+  const near = { x: 0.03, y: 0.03 };
+
+  assert.equal(canPlaceTrap(game.table, { kind: 'plug', position: { x: 0.5, y: 0.5 } }), false);
+  assert.deepEqual(snapTrapPosition('plug', near), POCKETS[0]!.position);
+
+  const placed = placeTrap(game, { kind: 'plug', position: near });
+
+  assert.equal(placed.kind, 'placed');
+
+  if (placed.kind !== 'placed') {
+    return;
+  }
+
+  assert.deepEqual(placed.game.table.traps[0]?.position, POCKETS[0]!.position);
+  assert.equal(
+    canPlaceTrap(placed.game.table, { kind: 'plug', position: { x: 0.02, y: 0.05 } }),
+    false,
+  );
+  assert.equal(
+    canPlaceTrap(placed.game.table, { kind: 'plug', position: { x: 1.12, y: 0.02 } }),
+    true,
+  );
 });
 
 test('a ball swallowed by a hole counts as pocketed', () => {
@@ -230,7 +301,7 @@ test('a ball swallowed by a hole counts as pocketed', () => {
 
 test('traps age with every shot and timeout, then disappear', () => {
   const game = afterBreak(createGame());
-  const placed = placeTrap(game, 'well', { x: 1, y: 0.3 });
+  const placed = placeTrap(game, { kind: 'well', position: { x: 1, y: 0.3 } });
 
   assert.equal(placed.kind, 'placed');
 

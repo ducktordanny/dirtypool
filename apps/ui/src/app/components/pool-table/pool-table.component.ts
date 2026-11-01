@@ -11,13 +11,24 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import type { Aim, BallId, Shot, Spin, TableState, TrapKind, Vec2 } from '@dirtypool/contracts';
+import type {
+  Aim,
+  BallGroup,
+  BallId,
+  Shot,
+  Spin,
+  TableState,
+  TrapKind,
+  TrapRequest,
+  Vec2,
+} from '@dirtypool/contracts';
 import {
   BALL_RADIUS,
   TABLE_HEIGHT,
   TABLE_WIDTH,
   canPlaceTrap,
   placeBallInHand,
+  snapTrapPosition,
 } from '@dirtypool/game';
 import { Application, Container, type FederatedPointerEvent, Graphics } from 'pixi.js';
 import {
@@ -31,7 +42,6 @@ import {
 } from '../../config/table-render.const';
 import { FRAME_SCHEDULER } from '../../types/frame-scheduler.type';
 import type { RemoteShot } from '../../types/remote-shot.type';
-import type { TrapDrop } from '../../types/trap-drop.type';
 import type { Viewport } from '../../types/viewport.type';
 import {
   aimAlong,
@@ -96,10 +106,11 @@ export class PoolTable {
   readonly ballInHand = input(false);
   // The trap picked from the pouch: the next tap on the cloth drops it instead of aiming.
   readonly placingTrap = input<TrapKind | null>(null);
-  // Which way a wall being placed runs.
+  // Which way a wall or fan being placed runs, and which group a magnet pulls.
   readonly placingDirection = input<Vec2 | null>(null);
+  readonly placingGroup = input<BallGroup | null>(null);
   readonly shot = output<Shot>();
-  readonly trapPlace = output<TrapDrop>();
+  readonly trapPlace = output<TrapRequest>();
   // Fires while this player aims, so the opponent can watch the cue.
   readonly aimChange = output<Aim>();
   // Cue ball dragging while ball in hand: every move for preview, then the final spot.
@@ -231,28 +242,21 @@ export class PoolTable {
       const app = this.app();
       const viewport = this.viewport();
       const placing = this.placingTrap();
-      const direction = this.placingDirection() ?? undefined;
       const hover = this.hoverPoint();
       const table = this.table();
+      const request = placing === null || hover === null ? null : this.trapRequest(placing, hover);
 
       untracked(() => {
         if (app === null) {
           return;
         }
 
-        if (placing === null || hover === null) {
+        if (request === null) {
           this.ghost.clear();
           return;
         }
 
-        drawTrapGhost(
-          this.ghost,
-          placing,
-          hover,
-          direction,
-          canPlaceTrap(table, placing, hover, direction),
-          viewport,
-        );
+        drawTrapGhost(this.ghost, request, canPlaceTrap(table, request), viewport);
       });
     });
 
@@ -475,15 +479,26 @@ export class PoolTable {
 
   // A tap on a blocked spot does nothing; the ghost already shows why.
   private dropTrap(kind: TrapKind, position: Vec2): void {
-    const direction = this.placingDirection() ?? undefined;
+    const request = this.trapRequest(kind, position);
 
     this.hoverPoint.set(null);
 
-    if (this.interactive() && canPlaceTrap(this.table(), kind, position, direction)) {
-      this.trapPlace.emit(
-        direction === undefined ? { kind, position } : { kind, position, direction },
-      );
+    if (this.interactive() && canPlaceTrap(this.table(), request)) {
+      this.trapPlace.emit(request);
     }
+  }
+
+  // What dropping the picked trap here would ask for, with a plug already on its pocket.
+  private trapRequest(kind: TrapKind, point: Vec2): TrapRequest {
+    const direction = this.placingDirection();
+    const group = this.placingGroup();
+
+    return {
+      kind,
+      position: snapTrapPosition(kind, point),
+      ...(direction === null ? {} : { direction }),
+      ...(group === null ? {} : { group }),
+    };
   }
 
   private dragCueTo(point: Vec2): void {

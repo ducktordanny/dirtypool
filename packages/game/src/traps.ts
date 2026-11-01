@@ -1,4 +1,11 @@
-import type { GameState, TableState, Trap, TrapKind, Vec2 } from '@dirtypool/contracts';
+import type {
+  GameState,
+  TableState,
+  Trap,
+  TrapKind,
+  TrapRequest,
+  Vec2,
+} from '@dirtypool/contracts';
 import {
   BALL_RADIUS,
   BUMPER_RADIUS,
@@ -12,12 +19,16 @@ import {
 } from './table.const.js';
 import { normalize } from './vec2.util.js';
 
-// Solid part of a round trap for placement: a well or hole is a field, only its core needs
-// clear cloth.
-const DISC_FOOTPRINT: Readonly<Record<Exclude<TrapKind, 'wall'>, number>> = {
+// Solid part of a round trap for placement: fields such as wells only need their core clear.
+const DISC_FOOTPRINT: Readonly<Record<Exclude<TrapKind, 'wall' | 'plug'>, number>> = {
   bumper: BUMPER_RADIUS,
+  spring: BUMPER_RADIUS,
+  fan: BALL_RADIUS,
   well: BALL_RADIUS,
+  magnet: BALL_RADIUS,
   hole: BALL_RADIUS,
+  mud: BALL_RADIUS,
+  ice: BALL_RADIUS,
 };
 // A wall is checked at this many points along its length.
 const WALL_SAMPLES = 5;
@@ -31,18 +42,33 @@ export type TrapPlacement =
   | { readonly kind: 'placed'; readonly game: GameState }
   | { readonly kind: 'not-aiming' | 'no-traps-left' | 'already-placed' | 'blocked' };
 
+export function needsDirection(kind: TrapKind): boolean {
+  return kind === 'wall' || kind === 'fan';
+}
+
+export function needsGroup(kind: TrapKind): boolean {
+  return kind === 'magnet';
+}
+
 // Radius of the disc a trap needs clear around its centre, for marking a blocked drop.
 export function trapFootprint(kind: TrapKind): number {
-  return kind === 'wall' ? WALL_HALF_LENGTH + WALL_RADIUS : DISC_FOOTPRINT[kind];
+  switch (kind) {
+    case 'wall':
+      return WALL_HALF_LENGTH + WALL_RADIUS;
+    case 'plug':
+      return POCKETS[0]?.radius ?? BALL_RADIUS;
+    default:
+      return DISC_FOOTPRINT[kind];
+  }
+}
+
+// A plug lands on the pocket under it; everything else goes exactly where it was dropped.
+export function snapTrapPosition(kind: TrapKind, position: Vec2): Vec2 {
+  return kind === 'plug' ? (pocketUnder(position)?.position ?? position) : position;
 }
 
 // The player on turn drops one trap from their pouch before shooting.
-export function placeTrap(
-  game: GameState,
-  kind: TrapKind,
-  position: Vec2,
-  direction?: Vec2,
-): TrapPlacement {
+export function placeTrap(game: GameState, request: TrapRequest): TrapPlacement {
   if (game.phase !== 'aiming') {
     return { kind: 'not-aiming' };
   }
@@ -58,18 +84,16 @@ export function placeTrap(
     return { kind: 'already-placed' };
   }
 
-  const along = wallDirection(kind, direction);
+  const prepared = prepare(request);
 
-  if (!canPlaceTrap(game.table, kind, position, along)) {
+  if (prepared === null || !fits(game.table, prepared)) {
     return { kind: 'blocked' };
   }
 
   const trap: Trap = {
+    ...prepared,
     id: game.table.traps.reduce((max, existing) => Math.max(max, existing.id + 1), 0),
-    kind,
     owner: shooter,
-    position,
-    ...(along === undefined ? {} : { direction: along }),
     shotsLeft: TRAP_LIFETIME_SHOTS,
   };
   const players: GameState['players'] = [
@@ -88,46 +112,18 @@ export function placeTrap(
   };
 }
 
-// On the cloth and clear of balls, pocket mouths and other traps. A wall needs a direction.
-export function canPlaceTrap(
-  table: TableState,
-  kind: TrapKind,
-  position: Vec2,
-  direction?: Vec2,
-): boolean {
-  const along = wallDirection(kind, direction);
+// On the cloth and clear of balls, pocket mouths and other traps; a plug must sit on a free
+// pocket instead. Walls and fans need a direction, magnets a group.
+export function canPlaceTrap(table: TableState, request: TrapRequest): boolean {
+  const prepared = prepare(request);
 
-  if (kind === 'wall' && along === undefined) {
-    return false;
-  }
-
-  const existing = table.traps.flatMap((trap) =>
-    footprint(trap.kind, trap.position, trap.direction),
-  );
-
-  return footprint(kind, position, along).every(
-    ({ point, radius }) =>
-      point.x >= radius &&
-      point.x <= TABLE_WIDTH - radius &&
-      point.y >= radius &&
-      point.y <= TABLE_HEIGHT - radius &&
-      table.balls.every(
-        (ball) => ball.pocketed || !within(ball.position, point, radius + BALL_RADIUS),
-      ) &&
-      POCKETS.every(
-        (pocket) =>
-          !within(pocket.position, point, radius + pocket.radius + pocket.mouth + BALL_RADIUS),
-      ) &&
-      existing.every((other) => !within(other.point, point, radius + other.radius)),
-  );
+  return prepared !== null && fits(table, prepared);
 }
 
 // Ball in hand and spotting must avoid trap footprints too.
 export function clearOfTraps(table: TableState, position: Vec2): boolean {
   return table.traps.every((trap) =>
-    footprint(trap.kind, trap.position, trap.direction).every(
-      ({ point, radius }) => !within(point, position, radius + BALL_RADIUS),
-    ),
+    footprint(trap).every(({ point, radius }) => !within(point, position, radius + BALL_RADIUS)),
   );
 }
 
@@ -145,31 +141,100 @@ export function ageTraps(table: TableState): TableState {
   };
 }
 
-function wallDirection(kind: TrapKind, direction: Vec2 | undefined): Vec2 | undefined {
-  if (kind !== 'wall' || direction === undefined) {
-    return undefined;
+// Normalises a request into exactly the fields the trap will carry, or null when a required
+// one is missing or unusable.
+function prepare(request: TrapRequest): TrapRequest | null {
+  const { kind } = request;
+  const position = snapTrapPosition(kind, request.position);
+  const direction =
+    needsDirection(kind) && request.direction !== undefined
+      ? normalize(request.direction)
+      : undefined;
+  const group = needsGroup(kind) ? request.group : undefined;
+
+  if (
+    needsDirection(kind) &&
+    (direction === undefined || (direction.x === 0 && direction.y === 0))
+  ) {
+    return null;
   }
 
-  const unit = normalize(direction);
+  if (needsGroup(kind) && group === undefined) {
+    return null;
+  }
 
-  return unit.x === 0 && unit.y === 0 ? undefined : unit;
+  return {
+    kind,
+    position,
+    ...(direction === undefined ? {} : { direction }),
+    ...(group === undefined ? {} : { group }),
+  };
 }
 
-function footprint(kind: TrapKind, position: Vec2, direction: Vec2 | undefined): Footprint[] {
-  if (kind !== 'wall') {
-    return [{ point: position, radius: DISC_FOOTPRINT[kind] }];
+function fits(table: TableState, request: TrapRequest): boolean {
+  if (request.kind === 'plug') {
+    const pocket = pocketUnder(request.position);
+
+    return (
+      pocket !== null &&
+      !table.traps.some((trap) => trap.kind === 'plug' && samePoint(trap.position, pocket.position))
+    );
   }
 
-  const along = direction ?? { x: 1, y: 0 };
+  const existing = table.traps.flatMap(footprint);
 
-  return Array.from({ length: WALL_SAMPLES }, (_, index) => {
-    const offset = (index / (WALL_SAMPLES - 1) - 0.5) * 2 * WALL_HALF_LENGTH;
+  return footprint(request).every(
+    ({ point, radius }) =>
+      point.x >= radius &&
+      point.x <= TABLE_WIDTH - radius &&
+      point.y >= radius &&
+      point.y <= TABLE_HEIGHT - radius &&
+      table.balls.every(
+        (ball) => ball.pocketed || !within(ball.position, point, radius + BALL_RADIUS),
+      ) &&
+      POCKETS.every(
+        (pocket) =>
+          !within(pocket.position, point, radius + pocket.radius + pocket.mouth + BALL_RADIUS),
+      ) &&
+      existing.every((other) => !within(other.point, point, radius + other.radius)),
+  );
+}
 
-    return {
-      point: { x: position.x + along.x * offset, y: position.y + along.y * offset },
-      radius: WALL_RADIUS,
-    };
-  });
+function footprint(trap: TrapRequest): Footprint[] {
+  switch (trap.kind) {
+    case 'plug':
+      return [{ point: trap.position, radius: pocketUnder(trap.position)?.radius ?? BALL_RADIUS }];
+    case 'wall': {
+      const along = trap.direction ?? { x: 1, y: 0 };
+
+      return Array.from({ length: WALL_SAMPLES }, (_, index) => {
+        const offset = (index / (WALL_SAMPLES - 1) - 0.5) * 2 * WALL_HALF_LENGTH;
+
+        return {
+          point: { x: trap.position.x + along.x * offset, y: trap.position.y + along.y * offset },
+          radius: WALL_RADIUS,
+        };
+      });
+    }
+    default:
+      return [{ point: trap.position, radius: DISC_FOOTPRINT[trap.kind] }];
+  }
+}
+
+function pocketUnder(position: Vec2): (typeof POCKETS)[number] | null {
+  return (
+    POCKETS.find((pocket) => {
+      const dx = position.x - pocket.position.x;
+      const dy = position.y - pocket.position.y;
+      const reach = pocket.radius + pocket.mouth;
+
+      return dx * dx + dy * dy < reach * reach;
+    }) ?? null
+  );
+}
+
+function samePoint(a: Vec2, b: Vec2): boolean {
+  return a.x === b.x && a.y === b.y;
 }
 
 function within(a: Vec2, b: Vec2, reach: number): boolean {

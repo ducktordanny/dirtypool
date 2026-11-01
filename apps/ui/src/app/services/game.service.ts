@@ -1,5 +1,5 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import type { GameState, Shot, TableState, Vec2 } from '@dirtypool/contracts';
+import type { GameState, Shot, TableState, TrapRequest, Vec2 } from '@dirtypool/contracts';
 import {
   SHOT_CLOCK_MS,
   createGame,
@@ -12,7 +12,6 @@ import {
 import type { ShotAnnouncement } from '../types/shot-announcement.type';
 import type { ShotClock } from '../types/shot-clock.type';
 import { TIMER_SCHEDULER } from '../types/timer-scheduler.type';
-import type { TrapDrop } from '../types/trap-drop.type';
 import { ShotAnimator } from './shot-animator.service';
 
 // Owns the local hotseat game: both players share one screen and the rules run in the browser.
@@ -74,12 +73,12 @@ export class GameService {
     this.tableState.set(table ?? game.table);
   }
 
-  placeTrap({ kind, position, direction }: TrapDrop): void {
+  placeTrap(request: TrapRequest): void {
     if (!this.canShoot()) {
       return;
     }
 
-    const result = placeTrap(this.gameState(), kind, position, direction);
+    const result = placeTrap(this.gameState(), request);
 
     if (result.kind === 'placed') {
       this.gameState.set(result.game);

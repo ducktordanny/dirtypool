@@ -79,6 +79,18 @@ export const WELL_PULL = 2.5;
 export const WELL_DRAG = 2;
 // A hole pulls like a well and swallows any ball whose centre gets this close.
 export const HOLE_RADIUS = 0.035;
+// A spring is a bumper that throws balls back faster than they came, up to a cap.
+export const SPRING_RESTITUTION = 1.6;
+export const SPRING_MAX_EXIT = 3;
+// A fan blows along its direction over a strip this long each way and this wide each side.
+export const FAN_REACH = 0.12;
+export const FAN_HALF_WIDTH = 0.07;
+export const FAN_PUSH = 2.5;
+// Mud and ice scale the cloth friction under them.
+export const MUD_RADIUS = 0.12;
+export const MUD_FRICTION = 6;
+export const ICE_RADIUS = 0.14;
+export const ICE_FRICTION = 0.08;
 // A wall is a rubber capsule: this long from the centre to each end, and this thick.
 export const WALL_HALF_LENGTH = 0.08;
 export const WALL_RADIUS = 0.008;

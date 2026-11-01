@@ -21,6 +21,7 @@
       [ballInHand]="ballInHand()"
       [placingTrap]="placingTrap()"
       [placingDirection]="placingDirection()"
+      [placingGroup]="placingGroup()"
       (shot)="onShot($event)"
       (trapPlace)="onTrapPlace($event)"
       (aimChange)="aim.emit($event)"
@@ -39,16 +40,19 @@
     }
   </div>
   <dp-ball-tray [balls]="trayBalls()" />
-  <div class="pouch">
-    <dp-trap-tray
-      [(selected)]="placingTrap"
-      [trapsLeft]="trapsLeft()"
-      [disabled]="!canPlaceTrap()"
-      (rotate)="rotateWall()"
-    />
+  <dp-trap-tray
+    class="pouch"
+    [(selected)]="placingTrap"
+    [trapsLeft]="trapsLeft()"
+    [disabled]="!canPlaceTrap()"
+    [turnable]="canTurn()"
+    [turnLabel]="turnLabel()"
+    (turn)="turnTrap()"
+  >
     <dp-help-tip>
-      Pick a trap from the pouch and tap the cloth to drop it. Drag on the table to aim, tap the cue
-      ball for spin, pull the power bar and let go to shoot.
+      Pick a trap from the pouch and tap the cloth to drop it; R turns walls and fans and swaps a
+      magnet's group. Drag on the table to aim, tap the cue ball for spin, pull the power bar and
+      let go to shoot.
     </dp-help-tip>
-  </div>
+  </dp-trap-tray>
 </div>

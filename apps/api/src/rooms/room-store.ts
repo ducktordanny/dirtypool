@@ -9,7 +9,7 @@ import type {
   SeatToken,
   ServerMessage,
   Shot,
-  TrapKind,
+  TrapRequest,
   Vec2,
 } from '@dirtypool/contracts';
 import {
@@ -229,18 +229,12 @@ export class RoomStore {
   }
 
   // Traps go down on your own turn only; the game package checks the pouch and the spot.
-  placeTrap(
-    room: Room,
-    player: RoomPlayer,
-    kind: TrapKind,
-    position: Vec2,
-    direction?: Vec2,
-  ): PlaceTrapResult {
+  placeTrap(room: Room, player: RoomPlayer, request: TrapRequest): PlaceTrapResult {
     if (room.players.length < 2 || room.game.currentPlayer !== player.index) {
       return 'not-your-turn';
     }
 
-    const result = placeTrap(room.game, kind, position, direction);
+    const result = placeTrap(room.game, request);
 
     if (result.kind === 'placed') {
       room.game = result.game;

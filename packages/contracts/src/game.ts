@@ -20,19 +20,41 @@ export type Ball = z.infer<typeof ballSchema>;
 export const playerIndexSchema = z.union([z.literal(0), z.literal(1)]);
 export type PlayerIndex = z.infer<typeof playerIndexSchema>;
 
-// Bumpers bounce balls away, walls block them, wells pull passing balls towards their centre and
-// holes do the same but swallow whatever reaches the middle, which counts as pocketed.
-export const trapKindSchema = z.enum(['bumper', 'well', 'wall', 'hole']);
+export const ballGroupSchema = z.enum(['solids', 'stripes']);
+export type BallGroup = z.infer<typeof ballGroupSchema>;
+
+// Bumpers and springs bounce balls away, walls block them, fans push them along, wells pull them
+// in, magnets pull one group only, holes swallow what reaches the middle (counted as pocketed),
+// mud and ice change the cloth under them, and a plug closes a pocket.
+export const trapKindSchema = z.enum([
+  'bumper',
+  'spring',
+  'wall',
+  'fan',
+  'well',
+  'magnet',
+  'hole',
+  'mud',
+  'ice',
+  'plug',
+]);
 export type TrapKind = z.infer<typeof trapKindSchema>;
 
-export const trapSchema = z.object({
+// What a player asks to put down; the trap itself adds id, owner and lifetime.
+export const trapRequestSchema = z.object({
+  kind: trapKindSchema,
+  position: vec2Schema,
+  // Walls and fans: the unit vector they run along.
+  direction: vec2Schema.optional(),
+  // Magnets: which group they pull.
+  group: ballGroupSchema.optional(),
+});
+export type TrapRequest = z.infer<typeof trapRequestSchema>;
+
+export const trapSchema = trapRequestSchema.extend({
   // Unique among the traps on the table.
   id: z.number().int().min(0),
-  kind: trapKindSchema,
   owner: playerIndexSchema,
-  position: vec2Schema,
-  // Walls only: the unit vector the wall runs along.
-  direction: vec2Schema.optional(),
   // The trap disappears once this many more shots have been taken.
   shotsLeft: z.number().int().min(1),
 });
@@ -57,9 +79,6 @@ export const shotSchema = z.object({
   spin: spinSchema.optional(),
 });
 export type Shot = z.infer<typeof shotSchema>;
-
-export const ballGroupSchema = z.enum(['solids', 'stripes']);
-export type BallGroup = z.infer<typeof ballGroupSchema>;
 
 export const playerStateSchema = z.object({
   // Own-group balls pocketed so far.

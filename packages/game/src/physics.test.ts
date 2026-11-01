@@ -10,6 +10,7 @@ import {
   BUMPER_RADIUS,
   FIXED_STEP,
   POCKETS,
+  SPRING_MAX_EXIT,
   TABLE_HEIGHT,
   TABLE_WIDTH,
   WALL_RADIUS,
@@ -275,6 +276,78 @@ test('balls crowded into a well come to rest against each other', () => {
   }
 });
 
+test('a fan pushes a crossing ball along its direction', () => {
+  const fan: Trap = { ...trap(5, 'fan', 1, 0.5), direction: { x: 0, y: 1 } };
+  const roll = (traps: Trap[]) =>
+    simulateShot(tableWith([ball(0, 0.7, 0.5, 0, 0)], traps), {
+      direction: { x: 1, y: 0 },
+      power: 0.2,
+    }).table.balls[0]!.position;
+
+  assert.ok(roll([fan]).y > roll([]).y + 0.03);
+});
+
+test('mud stops a ball short and ice lets it run', () => {
+  // Gentle enough to stop on open cloth, so no cushion bounce muddles the distances.
+  const roll = (traps: Trap[]) =>
+    simulateShot(tableWith([ball(0, 0.5, 0.5, 0, 0)], traps), {
+      direction: { x: 1, y: 0 },
+      power: 0.12,
+    }).table.balls[0]!.position.x;
+  const clean = roll([]);
+
+  assert.ok(clean < 2);
+  assert.ok(roll([trap(6, 'mud', 0.9, 0.5)]) < clean - 0.1);
+  assert.ok(roll([trap(7, 'ice', 0.9, 0.5)]) > clean + 0.03);
+});
+
+test('a spring throws a ball back faster than it arrived, up to its cap', () => {
+  const spring = trap(8, 'spring', 1.3, 0.5);
+  const bounce = (vx: number) => {
+    let table = tableWith([ball(0, 1.2, 0.5, vx, 0)], [spring]);
+    let events: ReturnType<typeof stepTable>['events'] = [];
+
+    while (events.length === 0) {
+      const result = stepTable(table);
+
+      table = result.table;
+      events = result.events;
+    }
+
+    return -table.balls[0]!.velocity.x;
+  };
+
+  assert.ok(bounce(1) > 1.4 && bounce(1) < 1.7);
+  assert.ok(bounce(4) <= SPRING_MAX_EXIT + 1e-9);
+});
+
+test('a magnet pulls only its own group', () => {
+  const magnet: Trap = { ...trap(9, 'magnet', 1, 0.5 + WELL_RADIUS * 0.5), group: 'solids' };
+  const roll = (id: number) => {
+    let table = tableWith([ball(id, 0.6, 0.5, 0.9, 0)], [magnet]);
+
+    while (!isAtRest(table)) {
+      table = stepTable(table).table;
+    }
+
+    return table.balls[id]!.position.y;
+  };
+
+  assert.ok(roll(1) > 0.51);
+  assert.equal(roll(9), 0.5);
+});
+
+test('a plugged pocket turns a ball away instead of taking it', () => {
+  const plug = trap(10, 'plug', POCKETS[0]!.position.x, POCKETS[0]!.position.y);
+  const shot = { direction: { x: -1, y: -1 }, power: 0.3 };
+  const open = simulateShot(tableWith([ball(0, 0.2, 0.2, 0, 0)]), shot);
+  const closed = simulateShot(tableWith([ball(0, 0.2, 0.2, 0, 0)], [plug]), shot);
+
+  assert.ok(open.events.some((event) => event.kind === 'pocketed' && event.pocketIndex === 0));
+  assert.ok(closed.events.every((event) => event.kind !== 'pocketed' || event.pocketIndex !== 0));
+  assert.ok(closed.events.some((event) => event.kind === 'cushion'));
+});
+
 test('the same shot from the same table is bit-for-bit reproducible', () => {
   const table = createRackedTable();
   const shot = { direction: { x: 0.98, y: 0.02 }, power: 0.9, spin: { x: 0.3, y: -0.5 } };
@@ -285,7 +358,19 @@ test('the same shot from the same table is bit-for-bit reproducible', () => {
   assert.deepEqual(first, second);
   assert.ok(first.events.some((event) => event.kind === 'cue-contact'));
 
-  const trapped = { ...table, traps: [trap(0, 'bumper', 1, 0.3), trap(1, 'well', 1.4, 0.9)] };
+  const trapped: TableState = {
+    ...table,
+    traps: [
+      trap(0, 'bumper', 1, 0.3),
+      trap(1, 'well', 1.4, 0.9),
+      { ...trap(2, 'fan', 0.8, 0.8), direction: { x: 1, y: 0 } },
+      trap(3, 'mud', 1.2, 0.3),
+      trap(4, 'ice', 0.5, 0.9),
+      trap(5, 'spring', 1.9, 0.9),
+      { ...trap(6, 'magnet', 0.4, 0.3), group: 'stripes' },
+      trap(7, 'plug', POCKETS[2]!.position.x, POCKETS[2]!.position.y),
+    ],
+  };
 
   assert.deepEqual(simulateShot(trapped, shot), simulateShot(trapped, shot));
 });
