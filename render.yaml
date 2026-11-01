@@ -4,7 +4,8 @@ services:
   - type: web
     name: dirtypool
     runtime: node
-    plan: free
+    region: frankfurt
+    plan: 0.5c-512mb
     buildCommand: pnpm install --frozen-lockfile && pnpm build
     startCommand: NODE_ENV=production node apps/api/dist/server.js
     healthCheckPath: /health

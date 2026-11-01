@@ -62,7 +62,7 @@ pnpm format
 
 ## Deployment
 
-One Node process does everything: in production the API serves the built UI from the same origin and keeps rooms in memory. `render.yaml` describes it as a Render web service, so a new Blueprint from the repository is enough; the free plan sleeps after 15 minutes idle, which drops open rooms and makes the first visit slow. To run it anywhere else:
+One Node process does everything: in production the API serves the built UI from the same origin and keeps rooms in memory. `render.yaml` describes it as a Render web service, so a new Blueprint from the repository is enough; it runs on the Starter plan so it never sleeps; the free plan would spin down after 15 minutes idle, dropping open rooms and making the first visit slow. To run it anywhere else:
 
 ```sh
 pnpm install --frozen-lockfile && pnpm build
