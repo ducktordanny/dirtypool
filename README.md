@@ -20,7 +20,7 @@ Playable in hotseat mode and online, with simplified 8-ball rules and four traps
 
 1. **Base** (done): deterministic simulation, Pixi table, aim-and-power controls with a cue, spin (top, back and side) set on the cue ball, hotseat play, websocket rooms.
 2. **Online UI** (done): pick a nickname, create a room, join by code or pick an open room from the list on the home page, `/room/CODE` works as an invite link, shots are animated locally and the server state is adopted. A room seats two players; a third join is refused. A 30 second shot clock passes the turn, enforced by the server online and locally in hotseat. A dropped connection or a refresh rejoins the same seat: seats are held for two minutes and the browser keeps a per-tab seat token.
-3. **Traps** (in progress): drop one on your own turn; ten kinds so far. Next: the aim guide should account for traps, then portals.
+3. **Traps** (in progress): drop one on your own turn; ten kinds so far, and the aim guide simulates the cue ball's real path through them. Next: portals.
 4. **Feel**: debug panel for physics knobs.
 
 ## Technology Stack

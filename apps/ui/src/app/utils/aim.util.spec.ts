@@ -1,5 +1,5 @@
-import type { Ball, TableState } from '@dirtypool/contracts';
-import { BALL_DIAMETER, BALL_RADIUS, TABLE_WIDTH } from '@dirtypool/game';
+import type { Ball, TableState, Trap } from '@dirtypool/contracts';
+import { BALL_DIAMETER, BALL_RADIUS, BUMPER_RADIUS, TABLE_WIDTH } from '@dirtypool/game';
 import { aimAlong, defaultAimDirection, directionFromPointer, rotateDirection } from './aim.util';
 
 function ball(id: number, x: number, y: number, pocketed = false): Ball {
@@ -13,6 +13,10 @@ function tableWith(...balls: Ball[]): TableState {
     balls: Array.from({ length: 16 }, (_, id) => byId.get(id) ?? ball(id, 2, 1, true)),
     traps: [],
   };
+}
+
+function trap(kind: Trap['kind'], x: number, y: number): Trap {
+  return { id: 0, kind, owner: 0, position: { x, y }, shotsLeft: 3 };
 }
 
 describe('aim.util', () => {
@@ -55,6 +59,24 @@ describe('aim.util', () => {
 
     expect(aim?.targetBallId).toBeNull();
     expect(aim?.ghost.x).toBeCloseTo(TABLE_WIDTH - BALL_RADIUS);
+  });
+
+  it('stops the ghost ball at a bumper in the way', () => {
+    const table: TableState = { ...tableWith(ball(0, 0.5, 0.5)), traps: [trap('bumper', 1, 0.5)] };
+    const aim = aimAlong(table, { x: 1, y: 0 });
+
+    expect(aim?.targetBallId).toBeNull();
+    expect(aim?.ghost.x).toBeCloseTo(1 - BUMPER_RADIUS - BALL_RADIUS, 2);
+  });
+
+  it('bends the path through a gravity well and bends less at full power', () => {
+    const table: TableState = { ...tableWith(ball(0, 0.5, 0.5)), traps: [trap('well', 1, 0.62)] };
+    const soft = aimAlong(table, { x: 1, y: 0 }, { x: 0, y: 0 }, 0.2);
+    const hard = aimAlong(table, { x: 1, y: 0 }, { x: 0, y: 0 }, 1);
+
+    expect(soft?.ghost.y).toBeGreaterThan(0.52);
+    expect(hard?.ghost.y).toBeLessThan(soft?.ghost.y ?? 0);
+    expect(soft?.path.length).toBeGreaterThan(5);
   });
 
   it('returns null without a cue ball on the table', () => {

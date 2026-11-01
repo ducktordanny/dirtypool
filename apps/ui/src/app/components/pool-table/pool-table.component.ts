@@ -131,12 +131,16 @@ export class PoolTable {
     if (this.interactive()) {
       const direction = this.direction();
 
-      return direction === null ? null : aimAlong(this.table(), direction, this.spin());
+      return direction === null
+        ? null
+        : aimAlong(this.table(), direction, this.spin(), this.power());
     }
 
     const remote = this.remoteAim();
 
-    return remote === null ? null : aimAlong(this.table(), remote.direction);
+    return remote === null
+      ? null
+      : aimAlong(this.table(), remote.direction, remote.spin, remote.power);
   });
   private readonly cuePull = computed(() => {
     const power = this.interactive() ? this.power() : (this.remoteAim()?.power ?? 0);

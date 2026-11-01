@@ -25,9 +25,8 @@ const CUE_SECTIONS: readonly CueSection[] = [
   { end: 1.47, startHalfWidth: 0.015, endHalfWidth: 0.013, color: TABLE_COLORS.cueBumper },
 ];
 const CUE_SHADOW_OFFSET = { x: 0.012, y: 0.016 };
-const DASH_LENGTH = 0.03;
-const DASH_GAP = 0.02;
 const GUIDE_LENGTH = 0.22;
+const PATH_DOT_RADIUS = 2;
 
 export type CueLine = Pick<ShotAim, 'origin' | 'direction'>;
 
@@ -74,7 +73,7 @@ export function drawAimGuide(
   const color = options.foulTarget === null ? TABLE_COLORS.guide : TABLE_COLORS.foul;
 
   graphics.clear();
-  drawDashedLine(graphics, aim.origin, aim.ghost, viewport, color);
+  drawPath(graphics, aim, viewport, color);
   graphics.circle(ghost.x, ghost.y, radius).stroke({ color, width: 2, alpha: 0.85 });
 
   if (aim.targetDirection !== null) {
@@ -151,30 +150,15 @@ function drawShaftHighlight(
     .stroke({ color: 0xffffff, width: Math.max(1, 0.003 * viewport.scale), alpha: 0.22 });
 }
 
-function drawDashedLine(
-  graphics: Graphics,
-  from: Vec2,
-  to: Vec2,
-  viewport: Viewport,
-  color: number,
-): void {
-  const total = Math.hypot(to.x - from.x, to.y - from.y);
+// Dots along the simulated route, skipping the ones still under the cue ball itself.
+function drawPath(graphics: Graphics, aim: ShotAim, viewport: Viewport, color: number): void {
+  for (const point of aim.path) {
+    if (Math.hypot(point.x - aim.origin.x, point.y - aim.origin.y) < BALL_RADIUS) {
+      continue;
+    }
 
-  if (total === 0) {
-    return;
+    const screen = toScreen(point, viewport);
+
+    graphics.circle(screen.x, screen.y, PATH_DOT_RADIUS).fill({ color, alpha: 0.55 });
   }
-
-  const direction = { x: (to.x - from.x) / total, y: (to.y - from.y) / total };
-
-  for (let travelled = BALL_RADIUS; travelled < total; travelled += DASH_LENGTH + DASH_GAP) {
-    const start = toScreen(add(from, scale(direction, travelled)), viewport);
-    const end = toScreen(
-      add(from, scale(direction, Math.min(total, travelled + DASH_LENGTH))),
-      viewport,
-    );
-
-    graphics.moveTo(start.x, start.y).lineTo(end.x, end.y);
-  }
-
-  graphics.stroke({ color, width: 2, alpha: 0.5 });
 }

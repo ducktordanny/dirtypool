@@ -1,25 +1,29 @@
-import type { Ball, Spin, TableState, Vec2 } from '@dirtypool/contracts';
+import type { Ball, Shot, Spin, TableState, Vec2 } from '@dirtypool/contracts';
 import {
-  BALL_DIAMETER,
-  BALL_RADIUS,
   CUE_BALL_ID,
-  MAX_SHOT_SPEED,
-  MAX_SPIN,
-  TABLE_HEIGHT,
-  TABLE_WIDTH,
-  add,
+  FIXED_STEP,
   distance,
   dot,
   length,
   normalize,
-  scale,
+  startShot,
+  stepTable,
   subtract,
 } from '@dirtypool/game';
+import { MIN_SHOT_POWER } from '../config/table-render.const';
 import type { ShotAim } from '../types/shot-aim.type';
 
 // Pointers closer than this to the cue ball give no usable direction.
 const MIN_POINTER_DISTANCE = 0.01;
 const FALLBACK_DIRECTION: Vec2 = { x: 1, y: 0 };
+// The guide is simulated at this power until the player pulls the bar.
+const GUIDE_POWER = 0.5;
+// How far ahead the guide looks; a ball caught in a well would otherwise swing for seconds.
+const GUIDE_MAX_STEPS = Math.ceil(2 / FIXED_STEP);
+// Spacing of the dots along the predicted path, in metres.
+const PATH_DOT_SPACING = 0.03;
+// Below this share of its speed the cue ball is as good as stopped by the hit.
+const MIN_DEFLECTION_SHARE = 0.05;
 
 export function cueBall(table: TableState): Ball | null {
   const cue = table.balls.find((ball) => ball.id === CUE_BALL_ID);
@@ -71,12 +75,14 @@ export function rotateDirection(direction: Vec2, radians: number): Vec2 {
   });
 }
 
-// Spin bends the predicted cue ball path after contact: top spin carries it on, back spin pulls
-// it back along the shot line, in the same proportion the simulation applies.
+// Runs the real simulation for the cue ball alone until its first contact, so the guide bends
+// through fields, stops at bumpers and walls, and carries the spin the shot would have. Without a
+// pulled power bar it assumes a medium shot.
 export function aimAlong(
   table: TableState,
   direction: Vec2,
   spin: Spin = { x: 0, y: 0 },
+  power = 0,
 ): ShotAim | null {
   const cue = cueBall(table);
 
@@ -85,84 +91,81 @@ export function aimAlong(
   }
 
   const origin = cue.position;
-  let travel = cushionDistance(origin, direction);
-  let target: Ball | null = null;
-
-  for (const ball of table.balls) {
-    if (ball.id === CUE_BALL_ID || ball.pocketed) {
-      continue;
-    }
-
-    const hit = ballDistance(origin, direction, ball.position);
-
-    if (hit !== null && hit < travel) {
-      travel = hit;
-      target = ball;
-    }
-  }
-
-  const ghost = add(origin, scale(direction, travel));
-
-  if (target === null) {
-    return {
-      origin,
-      direction,
-      ghost,
-      targetBallId: null,
-      targetDirection: null,
-      cueDeflection: null,
-      cueSpeed: 0,
-      fullness: 0,
-    };
-  }
-
-  const targetDirection = normalize(subtract(target.position, ghost));
-  const fullness = Math.max(0, dot(direction, targetDirection));
-  const tangent = subtract(direction, scale(targetDirection, fullness));
-  const follow = scale(direction, (spin.y * MAX_SPIN * fullness) / MAX_SHOT_SPEED);
-  const deflection = add(tangent, follow);
-
-  return {
+  const shot: Shot = {
+    direction,
+    power: power >= MIN_SHOT_POWER ? power : GUIDE_POWER,
+    ...(spin.x === 0 && spin.y === 0 ? {} : { spin }),
+  };
+  const path: Vec2[] = [origin];
+  let current = startShot(table, shot);
+  let miss: ShotAim = {
     origin,
     direction,
-    ghost,
-    targetBallId: target.id,
-    targetDirection,
-    cueDeflection: length(deflection) < 1e-3 ? null : normalize(deflection),
-    cueSpeed: Math.min(1, length(deflection)),
-    fullness,
+    ghost: origin,
+    path,
+    targetBallId: null,
+    targetDirection: null,
+    cueDeflection: null,
+    cueSpeed: 0,
+    fullness: 0,
   };
-}
 
-// Distance the cue ball centre can travel before touching a cushion.
-function cushionDistance(origin: Vec2, direction: Vec2): number {
-  const limits = [
-    direction.x > 0 ? (TABLE_WIDTH - BALL_RADIUS - origin.x) / direction.x : Infinity,
-    direction.x < 0 ? (BALL_RADIUS - origin.x) / direction.x : Infinity,
-    direction.y > 0 ? (TABLE_HEIGHT - BALL_RADIUS - origin.y) / direction.y : Infinity,
-    direction.y < 0 ? (BALL_RADIUS - origin.y) / direction.y : Infinity,
-  ];
+  for (let step = 0; step < GUIDE_MAX_STEPS; step += 1) {
+    const before = current.balls[CUE_BALL_ID];
+    const result = stepTable(current);
+    const after = result.table.balls[CUE_BALL_ID];
 
-  return Math.max(0, Math.min(...limits));
-}
+    if (before === undefined || after === undefined) {
+      return miss;
+    }
 
-// Distance along the ray until the cue ball touches the given ball centre, or null when it misses.
-function ballDistance(origin: Vec2, direction: Vec2, centre: Vec2): number | null {
-  const toCentre = subtract(centre, origin);
-  const along = dot(toCentre, direction);
+    current = result.table;
 
-  if (along <= 0) {
-    return null;
+    const contact = result.events.find((event) => event.kind === 'cue-contact');
+
+    if (contact !== undefined) {
+      const target = current.balls.find((ball) => ball.id === contact.ballId);
+      const heading = normalize(before.velocity);
+      const targetDirection = target === undefined ? null : normalize(target.velocity);
+      const speedBefore = length(before.velocity);
+      const cueSpeed = speedBefore === 0 ? 0 : Math.min(1, length(after.velocity) / speedBefore);
+
+      path.push(after.position);
+
+      return {
+        origin,
+        direction,
+        ghost: after.position,
+        path,
+        targetBallId: contact.ballId,
+        targetDirection,
+        cueDeflection: cueSpeed < MIN_DEFLECTION_SHARE ? null : normalize(after.velocity),
+        cueSpeed,
+        fullness:
+          target === undefined
+            ? 0
+            : Math.max(0, dot(heading, normalize(subtract(target.position, after.position)))),
+      };
+    }
+
+    const stopped =
+      after.pocketed ||
+      (after.velocity.x === 0 && after.velocity.y === 0) ||
+      result.events.some(
+        (event) =>
+          (event.kind === 'cushion' || event.kind === 'bumper') && event.ballId === CUE_BALL_ID,
+      );
+
+    if (stopped || distance(after.position, path[path.length - 1] ?? origin) >= PATH_DOT_SPACING) {
+      path.push(after.position);
+    }
+
+    miss = { ...miss, ghost: after.position };
+
+    if (stopped) {
+      return miss;
+    }
   }
 
-  const perpendicularSquared = dot(toCentre, toCentre) - along * along;
-  const reachSquared = BALL_DIAMETER * BALL_DIAMETER - perpendicularSquared;
-
-  if (reachSquared < 0) {
-    return null;
-  }
-
-  const hit = along - Math.sqrt(reachSquared);
-
-  return hit < 0 ? 0 : hit;
+  return miss;
 }
