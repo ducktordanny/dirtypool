@@ -6,6 +6,7 @@ function pocket(game: GameState, ids: readonly number[]): GameState {
   return {
     ...game,
     table: {
+      ...game.table,
       balls: game.table.balls.map((ball) =>
         ids.includes(ball.id) ? { ...ball, pocketed: true } : ball,
       ),
@@ -30,8 +31,8 @@ describe('legalTargetIds', () => {
       ...pocket(createGame(), [1, 2]),
       lastOutcome: 'pocketed',
       players: [
-        { score: 2, group: 'solids' },
-        { score: 0, group: 'stripes' },
+        { score: 2, group: 'solids', trapsLeft: 4 },
+        { score: 0, group: 'stripes', trapsLeft: 4 },
       ],
     };
 
@@ -43,8 +44,8 @@ describe('legalTargetIds', () => {
       ...pocket(createGame(), [1, 2, 3, 4, 5, 6, 7]),
       lastOutcome: 'pocketed',
       players: [
-        { score: 7, group: 'solids' },
-        { score: 0, group: 'stripes' },
+        { score: 7, group: 'solids', trapsLeft: 4 },
+        { score: 0, group: 'stripes', trapsLeft: 4 },
       ],
     };
 

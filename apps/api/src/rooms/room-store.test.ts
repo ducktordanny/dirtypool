@@ -133,6 +133,33 @@ test('ball in hand lets only the fouled-against player move the cue ball to a cl
   assert.deepEqual(room.game.table.balls[0]?.position, { x: 0.5, y: 0.5 });
 });
 
+test('a trap goes down on your own turn only, once per shot, and ages with the shot', () => {
+  const store = new RoomStore({ random: () => 0, schedule: () => () => undefined });
+  const { room, player: host } = store.create(() => undefined, 'Host');
+
+  assert.equal(store.placeTrap(room, host, 'bumper', { x: 0.5, y: 0.3 }), 'not-your-turn');
+
+  const guest = store.join(room.code, () => undefined, 'Guest');
+
+  assert.equal(guest.kind, 'joined');
+
+  if (guest.kind !== 'joined') {
+    return;
+  }
+
+  assert.equal(store.placeTrap(room, guest.player, 'bumper', { x: 0.5, y: 0.3 }), 'not-your-turn');
+  assert.equal(store.placeTrap(room, host, 'bumper', { x: 0.03, y: 0.3 }), 'blocked');
+  assert.equal(store.placeTrap(room, host, 'bumper', { x: 0.5, y: 0.3 }), 'placed');
+  assert.equal(store.placeTrap(room, host, 'well', { x: 1, y: 0.8 }), 'already-placed');
+  assert.equal(room.game.players[0].trapsLeft, 3);
+  assert.equal(room.game.table.traps.length, 1);
+
+  store.shoot(room, host, { direction: { x: 1, y: 0 }, power: 0.3 });
+
+  assert.equal(room.game.table.traps[0]?.shotsLeft, 2);
+  assert.equal(room.game.trapPlaced, false);
+});
+
 test('private rooms stay out of the open list but can still be joined by code', () => {
   const store = new RoomStore({ random: () => 0, schedule: () => () => undefined });
   const { room } = store.create(() => undefined, 'Host', true);

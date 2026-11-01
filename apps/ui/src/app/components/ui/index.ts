@@ -7,3 +7,4 @@ export { PowerSlider } from './power-slider/power-slider.component';
 export { ShotClockDisplay } from './shot-clock/shot-clock.component';
 export { SoundToggle } from './sound-toggle/sound-toggle.component';
 export { SpinControl } from './spin-control/spin-control.component';
+export { TrapTray } from './trap-tray/trap-tray.component';

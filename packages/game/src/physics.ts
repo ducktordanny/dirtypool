@@ -1,8 +1,10 @@
-import type { Ball, BallId, TableState } from '@dirtypool/contracts';
+import type { Ball, BallId, TableState, Trap } from '@dirtypool/contracts';
 import {
   BALL_DIAMETER,
   BALL_RADIUS,
   BALL_RESTITUTION,
+  BUMPER_RADIUS,
+  BUMPER_RESTITUTION,
   CUE_BALL_ID,
   CUSHION_RESTITUTION,
   FIXED_STEP,
@@ -16,7 +18,14 @@ import {
   SPIN_DECAY,
   TABLE_HEIGHT,
   TABLE_WIDTH,
+  WELL_CORE,
+  WELL_DRAG,
+  WELL_PULL,
+  WELL_RADIUS,
 } from './table.const.js';
+
+// Balls this close, relative to their diameter, count as touching.
+const CONTACT_SLACK = 1.02;
 
 export type TableEvent =
   | { readonly kind: 'pocketed'; readonly ballId: BallId; readonly pocketIndex: number }
@@ -27,7 +36,13 @@ export type TableEvent =
       readonly ballIds: readonly [BallId, BallId];
       readonly speed: number;
     }
-  | { readonly kind: 'cushion'; readonly ballId: BallId; readonly speed: number };
+  | { readonly kind: 'cushion'; readonly ballId: BallId; readonly speed: number }
+  | {
+      readonly kind: 'bumper';
+      readonly trapId: number;
+      readonly ballId: BallId;
+      readonly speed: number;
+    };
 
 export interface StepResult {
   readonly table: TableState;
@@ -56,39 +71,52 @@ export function stepTable(table: TableState): StepResult {
   const balls = table.balls.map(toMutable);
   const events: TableEvent[] = [];
 
-  integrate(balls);
+  integrate(balls, table.traps);
   resolveBallCollisions(balls, events);
+  resolveBumpers(balls, table.traps, events);
   resolveCushions(balls, events);
   pullIntoPockets(balls);
   capturePockets(balls, events);
 
-  return { table: { balls: balls.map(toBall) }, events };
+  return { table: { balls: balls.map(toBall), traps: table.traps }, events };
 }
 
-function integrate(balls: MutableBall[]): void {
+function integrate(balls: MutableBall[], traps: readonly Trap[]): void {
   for (const ball of balls) {
     if (ball.pocketed) {
       continue;
     }
 
+    const well = wellPull(ball, traps);
     const speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
 
     if (speed === 0) {
       ball.sx = 0;
       ball.sy = 0;
-      continue;
+    } else {
+      ball.sx = decay(ball.sx, SPIN_DECAY * FIXED_STEP);
+      ball.sy = decay(ball.sy, SPIN_DECAY * FIXED_STEP);
     }
 
-    ball.sx = decay(ball.sx, SPIN_DECAY * FIXED_STEP);
-    ball.sy = decay(ball.sy, SPIN_DECAY * FIXED_STEP);
-
     const slowed = speed - (ROLLING_DECELERATION + SPEED_DRAG * speed) * FIXED_STEP;
-    // On a pocket lip the ball keeps creeping until it drops, however slow it is.
-    const resting = slowed <= REST_SPEED && !onPocketLip(ball);
-    const factor = resting ? 0 : Math.max(slowed, 0) / speed;
+    // On a pocket lip the ball keeps creeping until it drops, however slow it is, and a well
+    // that out-pulls the cloth keeps it rolling back towards the bottom unless another ball is
+    // already in the way.
+    const resting =
+      slowed <= REST_SPEED &&
+      !onPocketLip(ball) &&
+      (well.strength <= ROLLING_DECELERATION || propped(ball, balls, well));
+    const factor = resting || speed === 0 ? 0 : Math.max(slowed, 0) / speed;
 
     ball.vx *= factor;
     ball.vy *= factor;
+
+    // The pull comes after friction so a ball turning round on the slope never reads as at rest.
+    if (!resting && well.strength > 0) {
+      ball.vx = ball.vx * well.damping + well.x * FIXED_STEP;
+      ball.vy = ball.vy * well.damping + well.y * FIXED_STEP;
+    }
+
     ball.x += ball.vx * FIXED_STEP;
     ball.y += ball.vy * FIXED_STEP;
   }
@@ -149,6 +177,104 @@ function resolveBallCollisions(balls: MutableBall[], events: TableEvent[]): void
       }
 
       events.push({ kind: 'collision', ballIds: [a.id, b.id], speed: approachSpeed });
+    }
+  }
+}
+
+interface WellPull {
+  // Acceleration towards the wells, in m/s^2.
+  x: number;
+  y: number;
+  // The strongest single pull, which decides whether the cloth can hold the ball still.
+  strength: number;
+  // Velocity kept per step by the wells' drag.
+  damping: number;
+}
+
+// A ball touching another on its downhill side cannot roll any further in. Without this, balls
+// crowded into a well would jostle each other forever and the shot would never end.
+function propped(ball: MutableBall, balls: readonly MutableBall[], pull: WellPull): boolean {
+  const reach = BALL_DIAMETER * CONTACT_SLACK;
+
+  return balls.some((other) => {
+    if (other === ball || other.pocketed) {
+      return false;
+    }
+
+    const dx = other.x - ball.x;
+    const dy = other.y - ball.y;
+
+    return dx * dx + dy * dy < reach * reach && dx * pull.x + dy * pull.y > 0;
+  });
+}
+
+// Resting balls feel a well too: one left on the slope rolls in as soon as the table is stepped.
+function wellPull(ball: MutableBall, traps: readonly Trap[]): WellPull {
+  const result: WellPull = { x: 0, y: 0, strength: 0, damping: 1 };
+
+  for (const trap of traps) {
+    if (trap.kind !== 'well') {
+      continue;
+    }
+
+    const dx = trap.position.x - ball.x;
+    const dy = trap.position.y - ball.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance === 0 || distance >= WELL_RADIUS) {
+      continue;
+    }
+
+    const depth = 1 - distance / WELL_RADIUS;
+    const pull = WELL_PULL * Math.min(1, distance / WELL_CORE) * depth;
+
+    result.x += (dx / distance) * pull;
+    result.y += (dy / distance) * pull;
+    result.strength = Math.max(result.strength, pull);
+    result.damping *= 1 - WELL_DRAG * depth * FIXED_STEP;
+  }
+
+  return result;
+}
+
+// A bumper is a fixed post: the ball is pushed out and its approach speed bounces back.
+function resolveBumpers(balls: MutableBall[], traps: readonly Trap[], events: TableEvent[]): void {
+  const reach = BALL_RADIUS + BUMPER_RADIUS;
+
+  for (const trap of traps) {
+    if (trap.kind !== 'bumper') {
+      continue;
+    }
+
+    for (const ball of balls) {
+      if (ball.pocketed) {
+        continue;
+      }
+
+      const dx = ball.x - trap.position.x;
+      const dy = ball.y - trap.position.y;
+      const distanceSquared = dx * dx + dy * dy;
+
+      if (distanceSquared >= reach * reach || distanceSquared === 0) {
+        continue;
+      }
+
+      const distance = Math.sqrt(distanceSquared);
+      const nx = dx / distance;
+      const ny = dy / distance;
+
+      ball.x = trap.position.x + nx * reach;
+      ball.y = trap.position.y + ny * reach;
+
+      const inbound = -(ball.vx * nx + ball.vy * ny);
+
+      if (inbound <= 0) {
+        continue;
+      }
+
+      ball.vx += (1 + BUMPER_RESTITUTION) * inbound * nx;
+      ball.vy += (1 + BUMPER_RESTITUTION) * inbound * ny;
+      events.push({ kind: 'bumper', trapId: trap.id, ballId: ball.id, speed: inbound });
     }
   }
 }

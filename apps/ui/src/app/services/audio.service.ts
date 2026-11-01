@@ -9,6 +9,7 @@ const MASTER_GAIN = 0.6;
 const MAX_CLACKS_PER_FRAME = 3;
 const MAX_THUDS_PER_FRAME = 2;
 const MAX_DROPS_PER_FRAME = 2;
+const MAX_BOINGS_PER_FRAME = 2;
 const NOISE_SECONDS = 0.5;
 const FOULS: ReadonlySet<ShotOutcome> = new Set([
   'opponent-ball',
@@ -20,6 +21,7 @@ const FOULS: ReadonlySet<ShotOutcome> = new Set([
 
 type Collision = Extract<TableEvent, { kind: 'collision' }>;
 type Cushion = Extract<TableEvent, { kind: 'cushion' }>;
+type Bumper = Extract<TableEvent, { kind: 'bumper' }>;
 
 interface Burst {
   readonly frequency: number;
@@ -112,6 +114,12 @@ export class AudioService {
       .forEach((event, index) => this.thud(out, impactLevel(event.speed) / (1 + index)));
 
     events
+      .filter((event): event is Bumper => event.kind === 'bumper')
+      .sort((a, b) => b.speed - a.speed)
+      .slice(0, MAX_BOINGS_PER_FRAME)
+      .forEach((event, index) => this.boing(out, impactLevel(event.speed) / (1 + index)));
+
+    events
       .filter((event) => event.kind === 'pocketed')
       .slice(0, MAX_DROPS_PER_FRAME)
       .forEach((_, index) => this.drop(out, index * 0.06));
@@ -184,6 +192,18 @@ export class AudioService {
       gain: 0.6 * level,
     });
     this.burst(out, { frequency: 500, q: 0.7, seconds: 0.04, gain: 0.3 * level });
+  }
+
+  // A pinball bumper: a rubbery pitch bend up with a snap on top.
+  private boing(out: GainNode, level: number): void {
+    this.tone(out, {
+      frequency: 220,
+      slideTo: 440,
+      type: 'triangle',
+      seconds: 0.12,
+      gain: 0.5 * level,
+    });
+    this.burst(out, { frequency: 1800, q: 1, seconds: 0.02, gain: 0.4 * level });
   }
 
   // A thunk into the pocket followed by the ball rattling down the chute.

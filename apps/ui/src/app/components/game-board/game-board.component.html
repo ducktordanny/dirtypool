@@ -7,6 +7,11 @@
       (release)="pool.fire($event)"
     />
     <dp-spin-control [(spin)]="spin" [disabled]="!interactive()" />
+    <dp-trap-tray
+      [(selected)]="placingTrap"
+      [trapsLeft]="trapsLeft()"
+      [disabled]="!canPlaceTrap()"
+    />
   </div>
   <div class="stage">
     <dp-pool-table
@@ -19,7 +24,9 @@
       [remoteShot]="remoteShot()"
       [legalTargets]="legalTargets()"
       [ballInHand]="ballInHand()"
+      [placingTrap]="placingTrap()"
       (shot)="onShot($event)"
+      (trapPlace)="onTrapPlace($event)"
       (aimChange)="aim.emit($event)"
       (cueMove)="cueMove.emit($event)"
       (cuePlace)="cuePlace.emit($event)"

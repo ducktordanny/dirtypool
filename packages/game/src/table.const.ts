@@ -65,3 +65,20 @@ export const MAX_SHOT_STEPS = Math.ceil(MAX_SHOT_SECONDS / FIXED_STEP);
 
 // A player has this long to take a shot once the balls are still; then the turn passes.
 export const SHOT_CLOCK_MS = 30_000;
+
+// Traps. A bumper is a fixed round post balls bounce off. A well pulls every moving ball inside
+// its reach towards the centre: the pull ramps up over the core, peaks there and fades to nothing
+// at the edge, so slow balls curl in and settle at the bottom while fast ones barely notice. The
+// well also damps motion so a captured ball stops in a few seconds instead of swinging about.
+// Only the bottom is flat enough for the cloth to hold a ball; anywhere else on the slope it rolls.
+export const BUMPER_RADIUS = 0.036;
+export const BUMPER_RESTITUTION = 0.9;
+export const WELL_RADIUS = 0.2;
+export const WELL_CORE = 0.05;
+export const WELL_PULL = 2.5;
+export const WELL_DRAG = 2;
+// Placement keeps this much cloth between a trap's footprint and anything else.
+export const TRAP_CLEARANCE = 0.01;
+export const TRAPS_PER_PLAYER = 4;
+// A trap outlives the shot it was placed for and the opponent's reply, then goes.
+export const TRAP_LIFETIME_SHOTS = 3;

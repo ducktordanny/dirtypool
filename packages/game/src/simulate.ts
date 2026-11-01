@@ -23,6 +23,7 @@ export function startShot(table: TableState, shot: Shot): TableState {
     spin === undefined || (spin.x === 0 && spin.y === 0) ? { velocity } : { velocity, spin };
 
   return {
+    ...table,
     balls: table.balls.map((ball) =>
       ball.id === CUE_BALL_ID && !ball.pocketed ? { ...ball, ...struck } : ball,
     ),

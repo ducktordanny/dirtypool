@@ -36,3 +36,12 @@ test('accepts a shot with spin inside the unit disk and rejects one outside', ()
   assert.equal(shoot({ x: 0.6, y: -0.8 }), true);
   assert.equal(shoot({ x: 0.9, y: 0.9 }), false);
 });
+
+test('accepts a place-trap message for a known trap kind only', () => {
+  const place = (kind: string) =>
+    clientMessageSchema.safeParse({ type: 'place-trap', kind, position: { x: 1, y: 0.5 } }).success;
+
+  assert.equal(place('bumper'), true);
+  assert.equal(place('well'), true);
+  assert.equal(place('portal'), false);
+});

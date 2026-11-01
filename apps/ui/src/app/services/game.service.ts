@@ -5,12 +5,14 @@ import {
   createGame,
   forfeitTurn,
   placeBallInHand,
+  placeTrap,
   resolveShot,
   type TableEvent,
 } from '@dirtypool/game';
 import type { ShotAnnouncement } from '../types/shot-announcement.type';
 import type { ShotClock } from '../types/shot-clock.type';
 import { TIMER_SCHEDULER } from '../types/timer-scheduler.type';
+import type { TrapDrop } from '../types/trap-drop.type';
 import { ShotAnimator } from './shot-animator.service';
 
 // Owns the local hotseat game: both players share one screen and the rules run in the browser.
@@ -70,6 +72,19 @@ export class GameService {
     }
 
     this.tableState.set(table ?? game.table);
+  }
+
+  placeTrap({ kind, position }: TrapDrop): void {
+    if (!this.canShoot()) {
+      return;
+    }
+
+    const result = placeTrap(this.gameState(), kind, position);
+
+    if (result.kind === 'placed') {
+      this.gameState.set(result.game);
+      this.tableState.set(result.game.table);
+    }
   }
 
   shoot(shot: Shot): void {
@@ -133,6 +148,7 @@ export class GameService {
 
 function previewCueBall(table: TableState, position: Vec2): TableState {
   return {
+    ...table,
     balls: table.balls.map((ball) => (ball.id === 0 ? { ...ball, position } : ball)),
   };
 }

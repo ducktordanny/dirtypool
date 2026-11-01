@@ -8,14 +8,18 @@ import type {
   Roster,
   ServerMessage,
   Shot,
+  TrapKind,
+  Vec2,
 } from '@dirtypool/contracts';
 import {
   SHOT_CLOCK_MS,
   createGame,
   forfeitTurn,
   placeBallInHand,
+  placeTrap,
   resolveShot,
   simulateShot,
+  type TrapPlacement,
 } from '@dirtypool/game';
 
 export type SendMessage = (message: ServerMessage) => void;
@@ -46,6 +50,8 @@ export type JoinResult =
   | { readonly kind: 'full' };
 
 export type PlaceResult = 'placed' | 'not-your-turn' | 'no-ball-in-hand' | 'blocked';
+
+export type PlaceTrapResult = TrapPlacement['kind'] | 'not-your-turn';
 
 export type ShootResult =
   | { readonly kind: 'played'; readonly game: GameState }
@@ -213,6 +219,21 @@ export class RoomStore {
     room.game = { ...room.game, table };
 
     return 'placed';
+  }
+
+  // Traps go down on your own turn only; the game package checks the pouch and the spot.
+  placeTrap(room: Room, player: RoomPlayer, kind: TrapKind, position: Vec2): PlaceTrapResult {
+    if (room.players.length < 2 || room.game.currentPlayer !== player.index) {
+      return 'not-your-turn';
+    }
+
+    const result = placeTrap(room.game, kind, position);
+
+    if (result.kind === 'placed') {
+      room.game = result.game;
+    }
+
+    return result.kind;
   }
 
   // Either player can rack again once the game is over; mid-game restarts are refused.

@@ -11,6 +11,7 @@ function tableWith(...balls: Ball[]): TableState {
 
   return {
     balls: Array.from({ length: 16 }, (_, id) => byId.get(id) ?? ball(id, 2, 1, true)),
+    traps: [],
   };
 }
 

@@ -39,6 +39,7 @@
       (aim)="room.sendAim($event)"
       (cueMove)="room.moveCueBall($event)"
       (cuePlace)="room.placeCueBall($event)"
+      (trapPlace)="room.placeTrap($event)"
       (restart)="room.restart()"
     >
       @if (reconnecting()) {

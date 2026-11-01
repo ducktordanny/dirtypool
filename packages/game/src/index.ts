@@ -4,3 +4,4 @@ export * from './rack.js';
 export * from './physics.js';
 export * from './simulate.js';
 export * from './rules.js';
+export * from './traps.js';

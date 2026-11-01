@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { GameState, TableState } from '@dirtypool/contracts';
+import type { GameState, TableState, Trap } from '@dirtypool/contracts';
 import type { TableEvent } from './physics.js';
 import { SOLIDS, createGame, forfeitTurn, resolveShot } from './rules.js';
 import { placeBallInHand } from './rack.js';
-import { FOOT_SPOT, HEAD_SPOT } from './table.const.js';
+import { FOOT_SPOT, HEAD_SPOT, TRAPS_PER_PLAYER, TRAP_LIFETIME_SHOTS } from './table.const.js';
+import { canPlaceTrap, placeTrap } from './traps.js';
 
 test('the break keeps the table open: pots keep the turn, any first contact is fine', () => {
   const game = createGame();
@@ -15,8 +16,8 @@ test('the break keeps the table open: pots keep the turn, any first contact is f
   assert.equal(next.currentPlayer, 0);
   assert.equal(next.lastOutcome, 'pocketed');
   assert.deepEqual(next.players, [
-    { score: 0, group: null },
-    { score: 0, group: null },
+    { score: 0, group: null, trapsLeft: TRAPS_PER_PLAYER },
+    { score: 0, group: null, trapsLeft: TRAPS_PER_PLAYER },
   ]);
   assert.deepEqual(next.pocketedBalls, [14]);
 });
@@ -29,8 +30,8 @@ test('the first pocketed ball after the break assigns the groups and keeps the t
 
   assert.equal(next.currentPlayer, 0);
   assert.deepEqual(next.players, [
-    { score: 1, group: 'solids' },
-    { score: 0, group: 'stripes' },
+    { score: 1, group: 'solids', trapsLeft: TRAPS_PER_PLAYER },
+    { score: 0, group: 'stripes', trapsLeft: TRAPS_PER_PLAYER },
   ]);
   assert.equal(next.lastOutcome, 'pocketed');
   assert.deepEqual(next.pocketedBalls, [3]);
@@ -157,6 +158,82 @@ test('running out the shot clock passes the turn', () => {
   assert.equal(forfeitTurn({ ...game, phase: 'finished' }).phase, 'finished');
 });
 
+test('the player on turn drops one trap per shot from a limited pouch', () => {
+  const game = createGame();
+  const first = placeTrap(game, 'bumper', { x: 0.5, y: 0.3 });
+
+  assert.equal(first.kind, 'placed');
+
+  if (first.kind !== 'placed') {
+    return;
+  }
+
+  assert.equal(first.game.players[0].trapsLeft, TRAPS_PER_PLAYER - 1);
+  assert.equal(first.game.trapPlaced, true);
+  assert.deepEqual(first.game.table.traps, [
+    {
+      id: 0,
+      kind: 'bumper',
+      owner: 0,
+      position: { x: 0.5, y: 0.3 },
+      shotsLeft: TRAP_LIFETIME_SHOTS,
+    },
+  ]);
+  assert.equal(placeTrap(first.game, 'well', { x: 1, y: 0.8 }).kind, 'already-placed');
+
+  const empty: GameState = {
+    ...game,
+    players: [{ ...game.players[0], trapsLeft: 0 }, game.players[1]],
+  };
+
+  assert.equal(placeTrap(empty, 'well', { x: 1, y: 0.8 }).kind, 'no-traps-left');
+  assert.equal(
+    placeTrap({ ...game, phase: 'finished' }, 'well', { x: 1, y: 0.8 }).kind,
+    'not-aiming',
+  );
+});
+
+test('traps need clear cloth away from balls, pockets and each other', () => {
+  const table = createGame().table;
+  const placed: TableState = { ...table, traps: [bumper(0, 0.5, 0.3)] };
+
+  assert.equal(canPlaceTrap(table, 'bumper', { x: 0.5, y: 0.3 }), true);
+  assert.equal(canPlaceTrap(table, 'bumper', { x: 0.03, y: 0.5 }), false);
+  assert.equal(canPlaceTrap(table, 'bumper', { x: 0.1, y: 0.1 }), false);
+  assert.equal(canPlaceTrap(table, 'well', { x: HEAD_SPOT.x + 0.05, y: HEAD_SPOT.y }), false);
+  assert.equal(canPlaceTrap(placed, 'well', { x: 0.55, y: 0.3 }), false);
+  assert.equal(canPlaceTrap(placed, 'well', { x: 0.7, y: 0.3 }), true);
+  assert.equal(
+    placeTrap({ ...createGame(), table: placed }, 'well', { x: 0.55, y: 0.3 }).kind,
+    'blocked',
+  );
+  assert.equal(placeBallInHand(placed, { x: 0.52, y: 0.3 }), null);
+});
+
+test('traps age with every shot and timeout, then disappear', () => {
+  const game = afterBreak(createGame());
+  const placed = placeTrap(game, 'well', { x: 1, y: 0.3 });
+
+  assert.equal(placed.kind, 'placed');
+
+  if (placed.kind !== 'placed') {
+    return;
+  }
+
+  const afterShot = resolveShot(placed.game, placed.game.table, [contact(1)]);
+
+  assert.equal(afterShot.table.traps[0]?.shotsLeft, TRAP_LIFETIME_SHOTS - 1);
+  assert.equal(afterShot.trapPlaced, false);
+
+  const afterTimeout = forfeitTurn(afterShot);
+
+  assert.equal(afterTimeout.table.traps[0]?.shotsLeft, TRAP_LIFETIME_SHOTS - 2);
+
+  const gone = resolveShot(afterTimeout, afterTimeout.table, [contact(1)]);
+
+  assert.deepEqual(gone.table.traps, []);
+});
+
 test('a finished game ignores further shots', () => {
   const finished: GameState = { ...createGame(), phase: 'finished', winner: 0 };
 
@@ -172,16 +249,25 @@ function withGroups(game: GameState, firstPlayerGroup: 'solids' | 'stripes'): Ga
   return {
     ...afterBreak(game),
     players: [
-      { score: 0, group: firstPlayerGroup },
-      { score: 0, group: firstPlayerGroup === 'solids' ? 'stripes' : 'solids' },
+      { score: 0, group: firstPlayerGroup, trapsLeft: TRAPS_PER_PLAYER },
+      {
+        score: 0,
+        group: firstPlayerGroup === 'solids' ? 'stripes' : 'solids',
+        trapsLeft: TRAPS_PER_PLAYER,
+      },
     ],
   };
 }
 
 function withPocketed(table: TableState, ids: readonly number[]): TableState {
   return {
+    ...table,
     balls: table.balls.map((ball) => (ids.includes(ball.id) ? { ...ball, pocketed: true } : ball)),
   };
+}
+
+function bumper(id: number, x: number, y: number): Trap {
+  return { id, kind: 'bumper', owner: 0, position: { x, y }, shotsLeft: TRAP_LIFETIME_SHOTS };
 }
 
 function contact(ballId: number): TableEvent {

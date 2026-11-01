@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { gameStateSchema, playerIndexSchema, shotSchema, vec2Schema } from './game.js';
+import {
+  gameStateSchema,
+  playerIndexSchema,
+  shotSchema,
+  trapKindSchema,
+  vec2Schema,
+} from './game.js';
 
 export const roomCodeSchema = z
   .string()
@@ -42,6 +48,8 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('aim'), aim: aimSchema }),
   // Ball in hand: where the cue ball should sit before the shot.
   z.object({ type: z.literal('place-cue'), position: vec2Schema }),
+  // Drop a trap from the pouch before shooting.
+  z.object({ type: z.literal('place-trap'), kind: trapKindSchema, position: vec2Schema }),
   z.object({ type: z.literal('shoot'), shot: shotSchema }),
   // Rack a fresh game once the current one is over.
   z.object({ type: z.literal('restart') }),
@@ -70,6 +78,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('turn-passed'), game: gameStateSchema, clock: shotClockSchema }),
   z.object({ type: z.literal('opponent-aim'), aim: aimSchema }),
   z.object({ type: z.literal('cue-placed'), position: vec2Schema }),
+  z.object({ type: z.literal('trap-placed'), game: gameStateSchema }),
   z.object({ type: z.literal('game-reset'), game: gameStateSchema, clock: shotClockSchema }),
   z.object({ type: z.literal('error'), message: z.string() }),
 ]);

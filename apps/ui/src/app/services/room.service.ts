@@ -22,6 +22,7 @@ import type { RemoteShot } from '../types/remote-shot.type';
 import type { ShotAnnouncement } from '../types/shot-announcement.type';
 import type { ShotClock } from '../types/shot-clock.type';
 import { TIMER_SCHEDULER } from '../types/timer-scheduler.type';
+import type { TrapDrop } from '../types/trap-drop.type';
 import { ShotAnimator } from './shot-animator.service';
 
 export type RoomConnection = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'closed';
@@ -185,6 +186,13 @@ export class RoomService {
     }
 
     this.send({ type: 'place-cue', position });
+  }
+
+  // The server checks the pouch and the spot; its broadcast puts the trap on both tables.
+  placeTrap({ kind, position }: TrapDrop): void {
+    if (this.canShoot()) {
+      this.send({ type: 'place-trap', kind, position });
+    }
   }
 
   restart(): void {
@@ -384,6 +392,12 @@ export class RoomService {
         }
         return;
       }
+      case 'trap-placed':
+        if (!this.animatingState()) {
+          this.gameState.set(message.game);
+          this.tableState.set(message.game.table);
+        }
+        return;
       case 'game-reset':
         this.cancelAnimation?.();
         this.cancelAnimation = null;
@@ -516,6 +530,7 @@ export class RoomService {
 
 function previewCueBall(table: TableState, position: Vec2): TableState {
   return {
+    ...table,
     balls: table.balls.map((ball) => (ball.id === 0 ? { ...ball, position } : ball)),
   };
 }

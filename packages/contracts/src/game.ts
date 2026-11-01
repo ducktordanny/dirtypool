@@ -17,7 +17,28 @@ export const ballSchema = z.object({
 });
 export type Ball = z.infer<typeof ballSchema>;
 
-export const tableStateSchema = z.object({ balls: z.array(ballSchema).length(16) });
+export const playerIndexSchema = z.union([z.literal(0), z.literal(1)]);
+export type PlayerIndex = z.infer<typeof playerIndexSchema>;
+
+// Bumpers bounce balls away; wells pull passing balls towards their centre.
+export const trapKindSchema = z.enum(['bumper', 'well']);
+export type TrapKind = z.infer<typeof trapKindSchema>;
+
+export const trapSchema = z.object({
+  // Unique among the traps on the table.
+  id: z.number().int().min(0),
+  kind: trapKindSchema,
+  owner: playerIndexSchema,
+  position: vec2Schema,
+  // The trap disappears once this many more shots have been taken.
+  shotsLeft: z.number().int().min(1),
+});
+export type Trap = z.infer<typeof trapSchema>;
+
+export const tableStateSchema = z.object({
+  balls: z.array(ballSchema).length(16),
+  traps: z.array(trapSchema),
+});
 export type TableState = z.infer<typeof tableStateSchema>;
 
 // Where the cue tip strikes the ball, as a point in the unit disk: x right, y up (top spin).
@@ -34,9 +55,6 @@ export const shotSchema = z.object({
 });
 export type Shot = z.infer<typeof shotSchema>;
 
-export const playerIndexSchema = z.union([z.literal(0), z.literal(1)]);
-export type PlayerIndex = z.infer<typeof playerIndexSchema>;
-
 export const ballGroupSchema = z.enum(['solids', 'stripes']);
 export type BallGroup = z.infer<typeof ballGroupSchema>;
 
@@ -45,6 +63,8 @@ export const playerStateSchema = z.object({
   score: z.number().int().min(0),
   // Null while the table is open.
   group: ballGroupSchema.nullable(),
+  // Traps still in the pouch for this game.
+  trapsLeft: z.number().int().min(0),
 });
 export type PlayerState = z.infer<typeof playerStateSchema>;
 
@@ -71,6 +91,8 @@ export const gameStateSchema = z.object({
   pocketedBalls: z.array(ballIdSchema).max(15),
   // After a foul the incoming player may put the cue ball anywhere before shooting.
   ballInHand: z.boolean(),
+  // One trap per shot: set once the player on turn has dropped theirs.
+  trapPlaced: z.boolean(),
 });
 export type GameState = z.infer<typeof gameStateSchema>;
 export type ShotOutcome = NonNullable<GameState['lastOutcome']>;

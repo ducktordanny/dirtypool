@@ -10,6 +10,7 @@ import {
   TABLE_HEIGHT,
   TABLE_WIDTH,
 } from './table.const.js';
+import { clearOfTraps } from './traps.js';
 
 const SQRT3_OVER_2 = 0.8660254037844386;
 // Standard-ish 8-ball rack read row by row from the apex: 8 sits in the centre of the third row.
@@ -41,7 +42,7 @@ export function createRackedTable(): TableState {
     throw new Error('Rack must contain 16 balls');
   }
 
-  return { balls };
+  return { balls, traps: [] };
 }
 
 export function placeCueBall(table: TableState, preferred: Vec2 = HEAD_SPOT): TableState {
@@ -54,13 +55,14 @@ export function placeCueBall(table: TableState, preferred: Vec2 = HEAD_SPOT): Ta
   }
 
   return {
+    ...table,
     balls: table.balls.map((ball) =>
       ball.id === CUE_BALL_ID ? createBall(CUE_BALL_ID, position) : ball,
     ),
   };
 }
 
-// Ball in hand: the cue ball may go anywhere on the cloth that is clear of other balls and
+// Ball in hand: the cue ball may go anywhere on the cloth that is clear of other balls, traps and
 // pocket mouths. Returns null when the spot is not allowed.
 export function placeBallInHand(table: TableState, position: Vec2): TableState | null {
   const inside =
@@ -79,11 +81,12 @@ export function placeBallInHand(table: TableState, position: Vec2): TableState |
     return dx * dx + dy * dy >= reach * reach;
   });
 
-  if (!inside || !clearOfBalls || !clearOfPockets) {
+  if (!inside || !clearOfBalls || !clearOfPockets || !clearOfTraps(table, position)) {
     return null;
   }
 
   return {
+    ...table,
     balls: table.balls.map((ball) =>
       ball.id === CUE_BALL_ID ? createBall(CUE_BALL_ID, position) : ball,
     ),

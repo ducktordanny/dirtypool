@@ -8,7 +8,8 @@ import type {
 } from '@dirtypool/contracts';
 import type { TableEvent } from './physics.js';
 import { createRackedTable, placeCueBall } from './rack.js';
-import { CUE_BALL_ID, EIGHT_BALL_ID } from './table.const.js';
+import { CUE_BALL_ID, EIGHT_BALL_ID, TRAPS_PER_PLAYER } from './table.const.js';
+import { ageTraps } from './traps.js';
 
 export const SOLIDS: readonly BallId[] = [1, 2, 3, 4, 5, 6, 7];
 export const STRIPES: readonly BallId[] = [9, 10, 11, 12, 13, 14, 15];
@@ -17,8 +18,8 @@ export function createGame(): GameState {
   return {
     table: createRackedTable(),
     players: [
-      { score: 0, group: null },
-      { score: 0, group: null },
+      { score: 0, group: null, trapsLeft: TRAPS_PER_PLAYER },
+      { score: 0, group: null, trapsLeft: TRAPS_PER_PLAYER },
     ],
     currentPlayer: 0,
     phase: 'aiming',
@@ -26,6 +27,7 @@ export function createGame(): GameState {
     lastOutcome: null,
     pocketedBalls: [],
     ballInHand: false,
+    trapPlaced: false,
   };
 }
 
@@ -50,13 +52,14 @@ export function groupBalls(group: BallGroup): readonly BallId[] {
 // after a scratch.
 export function resolveShot(
   game: GameState,
-  table: TableState,
+  settled: TableState,
   events: readonly TableEvent[],
 ): GameState {
   if (game.phase !== 'aiming') {
     return game;
   }
 
+  const table = ageTraps(settled);
   const shooter = game.currentPlayer;
   const breaking = game.lastOutcome === null;
   const pocketedIds = events
@@ -91,6 +94,7 @@ export function resolveShot(
       lastOutcome: legal ? 'eight-ball-win' : 'eight-ball-loss',
       pocketedBalls,
       ballInHand: false,
+      trapPlaced: false,
     };
   }
 
@@ -127,10 +131,11 @@ export function resolveShot(
     lastOutcome: outcome,
     pocketedBalls,
     ballInHand: FOULS.includes(outcome),
+    trapPlaced: false,
   };
 }
 
-// The shot clock ran out: the turn passes, nothing else changes.
+// The shot clock ran out: the turn passes and traps age as if a shot had been taken.
 export function forfeitTurn(game: GameState): GameState {
   if (game.phase !== 'aiming') {
     return game;
@@ -138,9 +143,11 @@ export function forfeitTurn(game: GameState): GameState {
 
   return {
     ...game,
+    table: ageTraps(game.table),
     currentPlayer: other(game.currentPlayer),
     lastOutcome: 'timeout',
     ballInHand: true,
+    trapPlaced: false,
   };
 }
 

@@ -11,8 +11,14 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import type { Aim, BallId, Shot, Spin, TableState, Vec2 } from '@dirtypool/contracts';
-import { BALL_RADIUS, TABLE_HEIGHT, TABLE_WIDTH, placeBallInHand } from '@dirtypool/game';
+import type { Aim, BallId, Shot, Spin, TableState, TrapKind, Vec2 } from '@dirtypool/contracts';
+import {
+  BALL_RADIUS,
+  TABLE_HEIGHT,
+  TABLE_WIDTH,
+  canPlaceTrap,
+  placeBallInHand,
+} from '@dirtypool/game';
 import { Application, Container, type FederatedPointerEvent, Graphics } from 'pixi.js';
 import {
   AIM_ROTATE_STEP,
@@ -25,6 +31,7 @@ import {
 } from '../../config/table-render.const';
 import { FRAME_SCHEDULER } from '../../types/frame-scheduler.type';
 import type { RemoteShot } from '../../types/remote-shot.type';
+import type { TrapDrop } from '../../types/trap-drop.type';
 import type { Viewport } from '../../types/viewport.type';
 import {
   aimAlong,
@@ -47,6 +54,7 @@ import { type CueLine, drawAimGuide, drawCue } from './cue.util';
 import { foulTargetPosition } from './foul-target.util';
 import { type PocketBurst, drawPocketBursts, startPocketBurst } from './pocket-burst.util';
 import { drawTableSurface, nearestPocketVisual } from './table-surface.util';
+import { drawTrapGhost, drawTraps } from './trap.util';
 
 // The cue while it strikes: fixed to where the cue ball was, so it never follows the ball.
 interface Strike extends CueLine {
@@ -59,6 +67,7 @@ interface Strike extends CueLine {
   template: '',
   host: {
     '[style.aspect-ratio]': 'aspectRatio',
+    '[style.cursor]': 'cursor()',
     '(window:keydown)': 'onKeyDown($event)',
   },
   styles: `
@@ -85,7 +94,10 @@ export class PoolTable {
   readonly legalTargets = input<readonly BallId[] | null>(null);
   // Ball in hand: the cue ball can be dragged to a new spot before the shot.
   readonly ballInHand = input(false);
+  // The trap picked from the pouch: the next tap on the cloth drops it instead of aiming.
+  readonly placingTrap = input<TrapKind | null>(null);
   readonly shot = output<Shot>();
+  readonly trapPlace = output<TrapDrop>();
   // Fires while this player aims, so the opponent can watch the cue.
   readonly aimChange = output<Aim>();
   // Cue ball dragging while ball in hand: every move for preview, then the final spot.
@@ -93,6 +105,7 @@ export class PoolTable {
   readonly cuePlace = output<Vec2>();
 
   protected readonly aspectRatio = TABLE_ASPECT_RATIO;
+  protected readonly cursor = computed(() => (this.placingTrap() === null ? null : 'crosshair'));
 
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly frames = inject(FRAME_SCHEDULER);
@@ -100,6 +113,7 @@ export class PoolTable {
   private readonly viewport = signal<Viewport>({ scale: 1, offset: { x: 0, y: 0 } });
   private readonly direction = signal<Vec2 | null>(null);
   private readonly strike = signal<Strike | null>(null);
+  private readonly hoverPoint = signal<Vec2 | null>(null);
   private readonly aim = computed(() => {
     if (this.interactive()) {
       const direction = this.direction();
@@ -118,7 +132,9 @@ export class PoolTable {
   });
   private readonly surface = new Graphics();
   private readonly shadows = new Graphics();
+  private readonly traps = new Graphics();
   private readonly balls = new Container();
+  private readonly ghost = new Graphics();
   private readonly guide = new Graphics();
   private readonly cue = new Graphics();
   private readonly bursts = new Graphics();
@@ -210,6 +226,27 @@ export class PoolTable {
     });
 
     effect(() => {
+      const app = this.app();
+      const viewport = this.viewport();
+      const placing = this.placingTrap();
+      const hover = this.hoverPoint();
+      const table = this.table();
+
+      untracked(() => {
+        if (app === null) {
+          return;
+        }
+
+        if (placing === null || hover === null) {
+          this.ghost.clear();
+          return;
+        }
+
+        drawTrapGhost(this.ghost, placing, hover, canPlaceTrap(table, placing, hover), viewport);
+      });
+    });
+
+    effect(() => {
       const interactive = this.interactive();
       const direction = this.direction();
       const power = this.power();
@@ -283,7 +320,7 @@ export class PoolTable {
   }
 
   private canAim(): boolean {
-    return this.interactive() && this.strike() === null;
+    return this.interactive() && this.strike() === null && this.placingTrap() === null;
   }
 
   // Pulls the cue into the ball, calls `onImpact`, then lets it follow through and fade out.
@@ -341,9 +378,18 @@ export class PoolTable {
     });
 
     this.host.nativeElement.appendChild(app.canvas);
-    app.stage.addChild(this.surface, this.shadows, this.balls, this.bursts, this.guide, this.cue);
+    app.stage.addChild(
+      this.surface,
+      this.shadows,
+      this.traps,
+      this.balls,
+      this.ghost,
+      this.bursts,
+      this.guide,
+      this.cue,
+    );
     app.stage.eventMode = 'static';
-    app.ticker.add(() => this.animateSinks());
+    app.ticker.add(() => this.animateFrame());
     app.stage.hitArea = app.screen;
     app.stage.on('pointerdown', (event) => this.onPointerDown(event));
     app.stage.on('pointermove', (event) => this.onPointerMove(event));
@@ -358,6 +404,13 @@ export class PoolTable {
   }
 
   private onPointerDown(event: FederatedPointerEvent): void {
+    const placing = this.placingTrap();
+
+    if (placing !== null) {
+      this.dropTrap(placing, toWorld(event.global, this.viewport()));
+      return;
+    }
+
     if (!this.canAim()) {
       return;
     }
@@ -380,6 +433,11 @@ export class PoolTable {
   }
 
   private onPointerMove(event: FederatedPointerEvent): void {
+    if (this.placingTrap() !== null) {
+      this.hoverPoint.set(toWorld(event.global, this.viewport()));
+      return;
+    }
+
     if (this.draggingCue()) {
       this.dragCueTo(toWorld(event.global, this.viewport()));
       return;
@@ -402,6 +460,15 @@ export class PoolTable {
       }
 
       this.dragPoint = null;
+    }
+  }
+
+  // A tap on a blocked spot does nothing; the ghost already shows why.
+  private dropTrap(kind: TrapKind, position: Vec2): void {
+    this.hoverPoint.set(null);
+
+    if (this.interactive() && canPlaceTrap(this.table(), kind, position)) {
+      this.trapPlace.emit({ kind, position });
     }
   }
 
@@ -482,7 +549,7 @@ export class PoolTable {
     }
   }
 
-  private animateSinks(): void {
+  private animateFrame(): void {
     const now = performance.now();
     const viewport = this.viewport();
 
@@ -490,6 +557,7 @@ export class PoolTable {
       animateSink(sprite, now, viewport);
     }
 
+    drawTraps(this.traps, this.table().traps, viewport, now);
     drawPocketBursts(this.bursts, this.activeBursts, now, viewport);
   }
 }

@@ -3,6 +3,7 @@ import {
   type Aim,
   type ClientMessage,
   type Shot,
+  type TrapKind,
   type Vec2,
 } from '@dirtypool/contracts';
 import type { JoinResult, Room, RoomPlayer, RoomStore, SendMessage } from './room-store.js';
@@ -73,6 +74,9 @@ export class RoomConnection {
         return;
       case 'place-cue':
         this.placeCue(message.position);
+        return;
+      case 'place-trap':
+        this.placeTrap(message.kind, message.position);
         return;
       case 'shoot':
         this.shoot(message.shot);
@@ -167,6 +171,23 @@ export class RoomConnection {
     this.rooms.broadcast(room, { type: 'cue-placed', position });
   }
 
+  private placeTrap(kind: TrapKind, position: Vec2): void {
+    if (this.membership === null) {
+      this.send({ type: 'error', message: 'Join a room first' });
+      return;
+    }
+
+    const { room, player } = this.membership;
+    const result = this.rooms.placeTrap(room, player, kind, position);
+
+    if (result !== 'placed') {
+      this.send({ type: 'error', message: TRAP_ERRORS[result] });
+      return;
+    }
+
+    this.rooms.broadcast(room, { type: 'trap-placed', game: room.game });
+  }
+
   private restart(): void {
     if (this.membership === null) {
       this.send({ type: 'error', message: 'Join a room first' });
@@ -215,6 +236,14 @@ const PLACE_ERRORS = {
   'not-your-turn': 'It is not your turn',
   'no-ball-in-hand': 'You do not have ball in hand',
   blocked: 'The cue ball cannot go there',
+} as const;
+
+const TRAP_ERRORS = {
+  'not-your-turn': 'It is not your turn',
+  'not-aiming': 'The game is over',
+  'no-traps-left': 'Your pouch is empty',
+  'already-placed': 'One trap per shot',
+  blocked: 'The trap cannot go there',
 } as const;
 
 const SHOOT_ERRORS = {

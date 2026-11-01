@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { TRAPS_PER_PLAYER } from '@dirtypool/game';
 import { ManualFrameScheduler } from '../testing/manual-frame-scheduler';
 import { ManualTimerScheduler } from '../testing/manual-timer-scheduler';
 import { FRAME_SCHEDULER } from '../types/frame-scheduler.type';
@@ -87,9 +88,18 @@ describe('GameService', () => {
 
     expect(service.game().lastOutcome).toBeNull();
     expect(service.game().players).toEqual([
-      { score: 0, group: null },
-      { score: 0, group: null },
+      { score: 0, group: null, trapsLeft: TRAPS_PER_PLAYER },
+      { score: 0, group: null, trapsLeft: TRAPS_PER_PLAYER },
     ]);
     expect(timers.pending).toHaveLength(1);
+  });
+
+  it('drops one trap per shot from the pouch of the player on turn', () => {
+    service.placeTrap({ kind: 'bumper', position: { x: 0.5, y: 0.3 } });
+    service.placeTrap({ kind: 'well', position: { x: 1, y: 0.8 } });
+
+    expect(service.game().table.traps.map((trap) => trap.kind)).toEqual(['bumper']);
+    expect(service.game().players[0].trapsLeft).toBe(TRAPS_PER_PLAYER - 1);
+    expect(service.table().traps).toHaveLength(1);
   });
 });

@@ -1,10 +1,19 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { Ball, TableState } from '@dirtypool/contracts';
+import type { Ball, TableState, Trap } from '@dirtypool/contracts';
 import { isAtRest, stepTable } from './physics.js';
 import { createRackedTable } from './rack.js';
 import { simulateShot, startShot } from './simulate.js';
-import { BALL_DIAMETER, BALL_RADIUS, POCKETS, TABLE_HEIGHT, TABLE_WIDTH } from './table.const.js';
+import {
+  BALL_DIAMETER,
+  BALL_RADIUS,
+  BUMPER_RADIUS,
+  FIXED_STEP,
+  POCKETS,
+  TABLE_HEIGHT,
+  TABLE_WIDTH,
+  WELL_RADIUS,
+} from './table.const.js';
 import { distance } from './vec2.util.js';
 
 test('racked balls never overlap and stay inside the table', () => {
@@ -144,6 +153,96 @@ test('spin is gone once the balls stop', () => {
   assert.ok(table.balls.every((ball) => ball.spin === undefined));
 });
 
+test('a bumper bounces a ball back and reports the hit', () => {
+  const bumper = trap(0, 'bumper', 1.3, 0.5);
+  let table = tableWith([ball(0, 1, 0.5, 1, 0)], [bumper]);
+  let events: ReturnType<typeof stepTable>['events'] = [];
+
+  while (events.length === 0) {
+    const result = stepTable(table);
+
+    table = result.table;
+    events = result.events;
+  }
+
+  assert.deepEqual(events[0], { kind: 'bumper', trapId: 0, ballId: 0, speed: events[0]?.speed });
+  assert.ok(events[0]?.kind === 'bumper' && events[0].speed > 0.9);
+  assert.ok(table.balls[0]!.velocity.x < -0.8);
+  assert.ok(table.balls[0]!.position.x <= 1.3 - BUMPER_RADIUS - BALL_RADIUS + 1e-9);
+  assert.deepEqual(table.traps, [bumper]);
+});
+
+test('a well bends a slow ball passing beside it and holds one resting at the bottom', () => {
+  const well = trap(3, 'well', 1, 0.5 + WELL_RADIUS * 0.5);
+  const { table: curved } = simulateShot(tableWith([ball(0, 0.6, 0.5, 0, 0)], [well]), {
+    direction: { x: 1, y: 0 },
+    power: 0.15,
+  });
+  const { table: straight } = simulateShot(tableWith([ball(0, 0.6, 0.5, 0, 0)]), {
+    direction: { x: 1, y: 0 },
+    power: 0.15,
+  });
+  const bottom = tableWith([ball(0, 1.003, well.position.y, 0, 0)], [well]);
+  const slope = tableWith([ball(0, 1.1, well.position.y, 0, 0)], [well]);
+
+  assert.ok(curved.balls[0]!.position.y > straight.balls[0]!.position.y + 0.01);
+  assert.ok(isAtRest(stepTable(bottom).table));
+  assert.ok(!isAtRest(stepTable(slope).table));
+});
+
+test('a ball climbing out of a well rolls back and settles at the bottom', () => {
+  const well = trap(3, 'well', 1, 0.5);
+  let table = tableWith([ball(0, 1.08, 0.5, 0.3, 0)], [well]);
+  let steps = 0;
+  let farthest = 0;
+
+  while (!isAtRest(table) && steps < 10_000) {
+    table = stepTable(table).table;
+    farthest = Math.max(farthest, table.balls[0]!.position.x - 1);
+    steps += 1;
+  }
+
+  const settled = table.balls[0]!.position;
+
+  assert.ok(isAtRest(table));
+  // It kept going outward first, then fell back instead of freezing on the slope.
+  assert.ok(farthest > 0.09);
+  assert.ok(Math.hypot(settled.x - 1, settled.y - 0.5) < 0.01);
+  assert.ok(steps < 5 / FIXED_STEP);
+});
+
+test('balls crowded into a well come to rest against each other', () => {
+  const well = trap(3, 'well', 1, 0.5);
+  // Three balls on the slope around the bottom; they roll in and meet, and none can reach the
+  // flat spot where the cloth alone would hold it.
+  let table = tableWith(
+    [
+      ball(0, 1.06, 0.5, 0, 0),
+      ball(1, 1 - 0.03, 0.5 + 0.05196, 0, 0),
+      ball(2, 1 - 0.03, 0.5 - 0.05196, 0, 0),
+    ],
+    [well],
+  );
+  let steps = 1;
+
+  table = stepTable(table).table;
+  assert.ok(!isAtRest(table));
+
+  while (!isAtRest(table) && steps < 10_000) {
+    table = stepTable(table).table;
+    steps += 1;
+  }
+
+  assert.ok(isAtRest(table));
+  assert.ok(steps < 3 / FIXED_STEP);
+
+  for (const id of [0, 1, 2]) {
+    const { x, y } = table.balls[id]!.position;
+
+    assert.ok(Math.hypot(x - 1, y - 0.5) < BALL_DIAMETER);
+  }
+});
+
 test('the same shot from the same table is bit-for-bit reproducible', () => {
   const table = createRackedTable();
   const shot = { direction: { x: 0.98, y: 0.02 }, power: 0.9, spin: { x: 0.3, y: -0.5 } };
@@ -153,16 +252,24 @@ test('the same shot from the same table is bit-for-bit reproducible', () => {
 
   assert.deepEqual(first, second);
   assert.ok(first.events.some((event) => event.kind === 'cue-contact'));
+
+  const trapped = { ...table, traps: [trap(0, 'bumper', 1, 0.3), trap(1, 'well', 1.4, 0.9)] };
+
+  assert.deepEqual(simulateShot(trapped, shot), simulateShot(trapped, shot));
 });
 
-function tableWith(active: Ball[]): TableState {
+function tableWith(active: Ball[], traps: Trap[] = []): TableState {
   const balls = createRackedTable().balls.map((racked) => ({ ...racked, pocketed: true }));
 
   for (const current of active) {
     balls[current.id] = current;
   }
 
-  return { balls };
+  return { balls, traps };
+}
+
+function trap(id: number, kind: Trap['kind'], x: number, y: number): Trap {
+  return { id, kind, owner: 0, position: { x, y }, shotsLeft: 3 };
 }
 
 function ball(id: number, x: number, y: number, vx: number, vy: number): Ball {

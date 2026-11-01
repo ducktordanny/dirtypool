@@ -47,6 +47,16 @@ export const TABLE_COLORS = {
   cueBumper: 0x111111,
 } as const;
 
+export const TRAP_COLORS = {
+  bumperRubber: 0xd93a4a,
+  bumperCap: 0xf4f1ea,
+  well: 0x1b0f3a,
+  wellSwirl: 0xa78bfa,
+} as const;
+
+// Marks what belongs to whom on the table: player 1 gold, player 2 cyan.
+export const PLAYER_COLORS = [0xf2c14e, 0x4cc9f0] as const;
+
 const SOLID_COLORS: Readonly<Record<number, number>> = {
   1: 0xffd34d,
   2: 0x3d7eff,
