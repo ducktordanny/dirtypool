@@ -7,16 +7,17 @@ import type {
   TableState,
 } from '@dirtypool/contracts';
 import type { TableEvent } from './physics.js';
-import { createRackedTable, placeCueBall } from './rack.js';
+import { createRackedTable, placeCueBall, rackOrder } from './rack.js';
 import { CUE_BALL_ID, EIGHT_BALL_ID, TRAPS_PER_PLAYER } from './table.const.js';
 import { ageTraps } from './traps.js';
 
 export const SOLIDS: readonly BallId[] = [1, 2, 3, 4, 5, 6, 7];
 export const STRIPES: readonly BallId[] = [9, 10, 11, 12, 13, 14, 15];
 
-export function createGame(): GameState {
+// Without a random source the rack is the fixed one, which tests rely on.
+export function createGame(random?: () => number): GameState {
   return {
-    table: createRackedTable(),
+    table: createRackedTable(random === undefined ? undefined : rackOrder(random)),
     players: [
       { score: 0, group: null, trapsLeft: TRAPS_PER_PLAYER },
       { score: 0, group: null, trapsLeft: TRAPS_PER_PLAYER },

@@ -26,7 +26,7 @@ export class GameService {
 
   private readonly animator = inject(ShotAnimator);
   private readonly timers = inject(TIMER_SCHEDULER);
-  private readonly gameState = signal<GameState>(createGame());
+  private readonly gameState = signal<GameState>(createGame(Math.random));
   private readonly tableState = signal<TableState>(this.gameState().table);
   private readonly animatingState = signal(false);
   private readonly clockState = signal<ShotClock | null>(null);
@@ -39,7 +39,7 @@ export class GameService {
   }
 
   newGame(): void {
-    const game = createGame();
+    const game = createGame(Math.random);
 
     this.cancelAnimation?.();
     this.cancelAnimation = null;

@@ -106,7 +106,7 @@ export class RoomStore {
       code: this.uniqueCode(),
       private: isPrivate,
       players: [player],
-      game: createGame(),
+      game: createGame(this.random),
       deadline: null,
       cancelClock: null,
     };
@@ -249,7 +249,7 @@ export class RoomStore {
       return false;
     }
 
-    room.game = { ...createGame(), currentPlayer: this.coinToss() };
+    room.game = { ...createGame(this.random), currentPlayer: this.coinToss() };
     this.armClock(room, 0);
 
     return true;

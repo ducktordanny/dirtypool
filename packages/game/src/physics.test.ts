@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Ball, TableState, Trap } from '@dirtypool/contracts';
 import { isAtRest, stepTable } from './physics.js';
-import { createRackedTable } from './rack.js';
+import { RACK_ORDER, createRackedTable, rackOrder } from './rack.js';
 import { simulateShot, startShot } from './simulate.js';
 import {
   BALL_DIAMETER,
@@ -21,6 +21,10 @@ import { distance } from './vec2.util.js';
 
 test('racked balls never overlap and stay inside the table', () => {
   const { balls } = createRackedTable();
+  const shuffled = createRackedTable(rackOrder(() => 0.37));
+
+  assert.notDeepEqual(shuffled, createRackedTable());
+  assert.deepEqual(shuffled, createRackedTable(rackOrder(() => 0.37)));
 
   for (const ball of balls) {
     assert.ok(ball.position.x >= BALL_RADIUS && ball.position.x <= TABLE_WIDTH - BALL_RADIUS);
@@ -31,6 +35,25 @@ test('racked balls never overlap and stay inside the table', () => {
         assert.ok(distance(ball.position, otherBall.position) >= BALL_DIAMETER - 1e-9);
       }
     }
+  }
+});
+
+test('a shuffled rack keeps the 1 up front, the 8 in the middle and mixed back corners', () => {
+  let seed = 0.123;
+  const random = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+
+  for (let round = 0; round < 50; round += 1) {
+    const order = rackOrder(random);
+    const corners = [order[10]!, order[14]!].map((id) => (id < 8 ? 'solid' : 'stripe'));
+
+    assert.equal(order.length, RACK_ORDER.length);
+    assert.deepEqual(
+      [...order].sort((a, b) => a - b),
+      [...RACK_ORDER].sort((a, b) => a - b),
+    );
+    assert.equal(order[0], 1);
+    assert.equal(order[4], 8);
+    assert.deepEqual(corners.sort(), ['solid', 'stripe']);
   }
 });
 

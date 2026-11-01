@@ -14,9 +14,31 @@ import { clearOfTraps } from './traps.js';
 
 const SQRT3_OVER_2 = 0.8660254037844386;
 // Standard-ish 8-ball rack read row by row from the apex: 8 sits in the centre of the third row.
-const RACK_ORDER: readonly BallId[] = [1, 9, 2, 10, 8, 3, 11, 7, 14, 4, 5, 13, 15, 6, 12];
+export const RACK_ORDER: readonly BallId[] = [1, 9, 2, 10, 8, 3, 11, 7, 14, 4, 5, 13, 15, 6, 12];
+const APEX_SLOT = 0;
+const EIGHT_SLOT = 4;
+const BACK_CORNER_SLOTS: readonly [number, number] = [10, 14];
+const RACK_SLOTS = 15;
 
-export function createRackedTable(): TableState {
+// A fresh rack for every game, so the same break does not always drop the same ball: the 1 at
+// the apex, the 8 in the middle, a solid and a stripe in the back corners, the rest anywhere.
+// Randomness comes from the caller, which keeps this package free of Math.random.
+export function rackOrder(random: () => number): readonly BallId[] {
+  const solids = shuffle([2, 3, 4, 5, 6, 7], random);
+  const stripes = shuffle([9, 10, 11, 12, 13, 14, 15], random);
+  const corners = shuffle([solids.pop(), stripes.pop()], random);
+  const rest = shuffle([...solids, ...stripes], random);
+  const order: (BallId | undefined)[] = Array.from({ length: RACK_SLOTS }, () => undefined);
+
+  order[APEX_SLOT] = 1;
+  order[EIGHT_SLOT] = 8;
+  order[BACK_CORNER_SLOTS[0]] = corners[0];
+  order[BACK_CORNER_SLOTS[1]] = corners[1];
+
+  return order.map((id) => id ?? rest.pop()).filter((id): id is BallId => id !== undefined);
+}
+
+export function createRackedTable(order: readonly BallId[] = RACK_ORDER): TableState {
   const balls: Ball[] = [createBall(CUE_BALL_ID, HEAD_SPOT)];
   let index = 0;
 
@@ -25,7 +47,7 @@ export function createRackedTable(): TableState {
     const firstY = FOOT_SPOT.y - (row * BALL_DIAMETER) / 2;
 
     for (let column = 0; column <= row; column += 1) {
-      const id = RACK_ORDER[index];
+      const id = order[index];
 
       if (id === undefined) {
         throw new Error('Rack order is incomplete');
@@ -43,6 +65,18 @@ export function createRackedTable(): TableState {
   }
 
   return { balls, traps: [] };
+}
+
+function shuffle<T>(items: T[], random: () => number): T[] {
+  for (let index = items.length - 1; index > 0; index -= 1) {
+    const other = Math.floor(random() * (index + 1));
+    const held = items[index];
+
+    items[index] = items[other] as T;
+    items[other] = held as T;
+  }
+
+  return items;
 }
 
 export function placeCueBall(table: TableState, preferred: Vec2 = HEAD_SPOT): TableState {
