@@ -10,7 +10,7 @@ Playable in hotseat mode and online, with simplified 8-ball rules and eleven tra
 
 ## Rules (v1)
 
-- The table stays open after the break whatever drops; potting on the break keeps the turn. The first pocketed ball after that gives the shooter that group (solids or stripes); the opponent gets the other. While the table is open, any first contact but the 8 is fine.
+- The first pocketed ball, on the break or later, gives the shooter that group (solids or stripes) and the opponent the other; potting keeps the turn. Until then the table is open and any first contact but the 8 is fine.
 - You must hit one of your own balls first, and you keep the turn only when one of your own balls drops. Pocketing only an opponent's ball passes the turn.
 - The 8 must go last: sink it after clearing your group to win, any earlier and you lose. Sinking it on the break wins outright.
 - A scratch, a wrong first contact, a shot that touches nothing or running out the shot clock is a foul: the turn passes and the opponent gets ball in hand, dragging the cue ball anywhere clear before shooting.

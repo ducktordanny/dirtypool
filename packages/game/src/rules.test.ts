@@ -13,22 +13,29 @@ import {
 } from './table.const.js';
 import { canPlacePortalMouth, canPlaceTrap, placeTrap, snapTrapPosition } from './traps.js';
 
-test('the break keeps the table open: pots keep the turn, any first contact is fine', () => {
+test('a ball potted on the break picks the sides and keeps the turn, any first contact is fine', () => {
   const game = createGame();
-  const table = withPocketed(game.table, [14]);
+  const table = withPocketed(game.table, [14, 3]);
 
-  const next = resolveShot(game, table, [contact(1), pocketed(14)]);
+  const next = resolveShot(game, table, [contact(1), pocketed(14), pocketed(3)]);
 
   assert.equal(next.currentPlayer, 0);
   assert.equal(next.lastOutcome, 'pocketed');
   assert.deepEqual(next.players, [
-    { score: 0, group: null, trapsLeft: TRAPS_PER_PLAYER },
-    { score: 0, group: null, trapsLeft: TRAPS_PER_PLAYER },
+    { score: 1, group: 'stripes', trapsLeft: TRAPS_PER_PLAYER },
+    { score: 1, group: 'solids', trapsLeft: TRAPS_PER_PLAYER },
   ]);
-  assert.deepEqual(next.pocketedBalls, [14]);
+  assert.deepEqual(next.pocketedBalls, [14, 3]);
 });
 
-test('the first pocketed ball after the break assigns the groups and keeps the turn', () => {
+test('a dry break leaves the table open', () => {
+  const next = resolveShot(createGame(), createGame().table, [contact(1)]);
+
+  assert.equal(next.currentPlayer, 1);
+  assert.equal(next.players[0].group, null);
+});
+
+test('the first pocketed ball after a dry break assigns the groups and keeps the turn', () => {
   const game = afterBreak(createGame());
   const table = withPocketed(game.table, [3]);
 

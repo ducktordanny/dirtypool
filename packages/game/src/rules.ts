@@ -45,8 +45,8 @@ export function groupBalls(group: BallGroup): readonly BallId[] {
   return group === 'solids' ? SOLIDS : STRIPES;
 }
 
-// 8-ball rules, lightly simplified. The break keeps the table open whatever drops. After that the
-// first pocketed ball assigns the groups, you must hit your own group first (anything but the 8
+// 8-ball rules, lightly simplified. The first pocketed ball, on the break or later, assigns the
+// groups; you must hit your own group first (anything but the 8
 // while the table is open) and pocket one of your own to keep the turn, and the 8 goes last. A
 // scratch or a shot without contact passes the turn; the cue ball goes back on the head spot
 // after a scratch.
@@ -73,7 +73,7 @@ export function resolveShot(
   const firstGroup =
     pocketedObjectBalls[0] === undefined ? null : ballGroup(pocketedObjectBalls[0]);
   const assigned =
-    !breaking && ownBefore === null && firstGroup !== null && !scratched
+    ownBefore === null && firstGroup !== null && !scratched
       ? assignGroups(game.players, shooter, firstGroup)
       : game.players;
   const own = assigned[shooter].group;
