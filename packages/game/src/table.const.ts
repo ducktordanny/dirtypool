@@ -108,6 +108,6 @@ export const PORTAL_RADIUS = 0.04;
 export const PORTAL_EXIT_OFFSET = PORTAL_RADIUS + 0.002;
 // Placement keeps this much cloth between a trap's footprint and anything else.
 export const TRAP_CLEARANCE = 0.01;
-export const TRAPS_PER_PLAYER = 4;
-// A trap outlives the shot it was placed for and the opponent's reply, then goes.
-export const TRAP_LIFETIME_SHOTS = 3;
+export const TRAPS_PER_PLAYER = 6;
+// A trap stays for a few exchanges: the shot it was placed for and the next five.
+export const TRAP_LIFETIME_SHOTS = 6;

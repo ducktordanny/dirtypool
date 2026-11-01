@@ -103,6 +103,7 @@ export class GameBoard {
   });
   protected readonly legalTargets = computed(() => legalTargetIds(this.game()));
   protected readonly ballInHand = computed(() => this.interactive() && this.game().ballInHand);
+  protected readonly breaking = computed(() => this.game().lastOutcome === null);
   // The viewer's pouch online; in hotseat the pouch of whoever is on turn.
   protected readonly trapsLeft = computed(() => {
     const game = this.game();

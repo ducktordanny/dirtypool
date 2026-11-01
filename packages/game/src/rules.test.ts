@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { GameState, TableState, Trap } from '@dirtypool/contracts';
 import type { TableEvent } from './physics.js';
-import { SOLIDS, createGame, forfeitTurn, resolveShot } from './rules.js';
+import { SOLIDS, createGame, forfeitTurn, placeCueBallInHand, resolveShot } from './rules.js';
 import { placeBallInHand } from './rack.js';
 import {
   FOOT_SPOT,
@@ -26,6 +26,18 @@ test('a ball potted on the break picks the sides and keeps the turn, any first c
     { score: 1, group: 'solids', trapsLeft: TRAPS_PER_PLAYER },
   ]);
   assert.deepEqual(next.pocketedBalls, [14, 3]);
+});
+
+test('the breaker has ball in hand behind the head string only', () => {
+  const game = createGame();
+
+  assert.equal(game.ballInHand, true);
+  assert.equal(placeCueBallInHand(game, { x: HEAD_SPOT.x + 0.2, y: 0.5 }), null);
+  assert.notEqual(placeCueBallInHand(game, { x: HEAD_SPOT.x - 0.2, y: 0.3 }), null);
+  assert.notEqual(
+    placeCueBallInHand({ ...afterBreak(game), ballInHand: true }, { x: HEAD_SPOT.x + 0.2, y: 0.5 }),
+    null,
+  );
 });
 
 test('a dry break leaves the table open', () => {
@@ -362,13 +374,16 @@ test('traps age with every shot and timeout, then disappear', () => {
   assert.equal(afterShot.table.traps[0]?.shotsLeft, TRAP_LIFETIME_SHOTS - 1);
   assert.equal(afterShot.trapPlaced, false);
 
-  const afterTimeout = forfeitTurn(afterShot);
+  let aged = forfeitTurn(afterShot);
 
-  assert.equal(afterTimeout.table.traps[0]?.shotsLeft, TRAP_LIFETIME_SHOTS - 2);
+  assert.equal(aged.table.traps[0]?.shotsLeft, TRAP_LIFETIME_SHOTS - 2);
 
-  const gone = resolveShot(afterTimeout, afterTimeout.table, [contact(1)]);
+  for (let shot = 2; shot < TRAP_LIFETIME_SHOTS - 1; shot += 1) {
+    aged = resolveShot(aged, aged.table, [contact(1)]);
+  }
 
-  assert.deepEqual(gone.table.traps, []);
+  assert.equal(aged.table.traps[0]?.shotsLeft, 1);
+  assert.deepEqual(resolveShot(aged, aged.table, [contact(1)]).table.traps, []);
 });
 
 test('a finished game ignores further shots', () => {

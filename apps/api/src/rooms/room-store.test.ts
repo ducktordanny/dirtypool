@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { ServerMessage } from '@dirtypool/contracts';
+import { TRAPS_PER_PLAYER, TRAP_LIFETIME_SHOTS } from '@dirtypool/game';
 import { RoomStore, SEAT_RESERVATION_MS } from './room-store.js';
 
 test('creates a room with a four-letter code and seats the creator as player 0', () => {
@@ -123,6 +124,9 @@ test('ball in hand lets only the fouled-against player move the cue ball to a cl
     return;
   }
 
+  assert.equal(store.placeCue(room, host, { x: 1.5, y: 0.5 }), 'blocked');
+
+  room.game = { ...room.game, ballInHand: false };
   assert.equal(store.placeCue(room, host, { x: 0.5, y: 0.5 }), 'no-ball-in-hand');
 
   room.game = { ...room.game, ballInHand: true };
@@ -170,12 +174,12 @@ test('a trap goes down on your own turn only, once per shot, and ages with the s
     store.placeTrap(room, host, { kind: 'wall', position: { x: 1, y: 0.8 } }),
     'already-placed',
   );
-  assert.equal(room.game.players[0].trapsLeft, 3);
+  assert.equal(room.game.players[0].trapsLeft, TRAPS_PER_PLAYER - 1);
   assert.equal(room.game.table.traps.length, 1);
 
   store.shoot(room, host, { direction: { x: 1, y: 0 }, power: 0.3 });
 
-  assert.equal(room.game.table.traps[0]?.shotsLeft, 2);
+  assert.equal(room.game.table.traps[0]?.shotsLeft, TRAP_LIFETIME_SHOTS - 1);
   assert.equal(room.game.trapPlaced, false);
 
   room.game = { ...room.game, currentPlayer: 0 };

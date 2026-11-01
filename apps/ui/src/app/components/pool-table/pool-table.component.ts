@@ -24,6 +24,7 @@ import type {
 } from '@dirtypool/contracts';
 import {
   BALL_RADIUS,
+  HEAD_SPOT,
   TABLE_HEIGHT,
   TABLE_WIDTH,
   canPlacePortalMouth,
@@ -104,8 +105,10 @@ export class PoolTable {
   readonly remoteShot = input<RemoteShot | null>(null);
   // Balls this player may hit first; null means anything goes. Aiming elsewhere is marked.
   readonly legalTargets = input<readonly BallId[] | null>(null);
-  // Ball in hand: the cue ball can be dragged to a new spot before the shot.
+  // Ball in hand: the cue ball can be dragged to a new spot before the shot, and for the break
+  // only behind the head string.
   readonly ballInHand = input(false);
+  readonly kitchenOnly = input(false);
   // The trap picked from the pouch: the next tap on the cloth drops it instead of aiming.
   readonly placingTrap = input<TrapKind | null>(null);
   // Which way a wall or fan being placed runs, and which group a magnet pulls.
@@ -545,13 +548,17 @@ export class PoolTable {
   }
 
   private dragCueTo(point: Vec2): void {
+    const kitchenOnly = this.kitchenOnly();
     const position = {
-      x: Math.min(TABLE_WIDTH - BALL_RADIUS, Math.max(BALL_RADIUS, point.x)),
+      x: Math.min(
+        kitchenOnly ? HEAD_SPOT.x : TABLE_WIDTH - BALL_RADIUS,
+        Math.max(BALL_RADIUS, point.x),
+      ),
       y: Math.min(TABLE_HEIGHT - BALL_RADIUS, Math.max(BALL_RADIUS, point.y)),
     };
 
     this.dragPoint = position;
-    this.tintCueBall(placeBallInHand(this.table(), position) !== null);
+    this.tintCueBall(placeBallInHand(this.table(), position, kitchenOnly) !== null);
     this.cueMove.emit(position);
   }
 

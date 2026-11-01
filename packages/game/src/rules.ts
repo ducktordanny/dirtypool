@@ -5,9 +5,10 @@ import type {
   PlayerIndex,
   ShotOutcome,
   TableState,
+  Vec2,
 } from '@dirtypool/contracts';
 import type { TableEvent } from './physics.js';
-import { createRackedTable, placeCueBall, rackOrder } from './rack.js';
+import { createRackedTable, placeBallInHand, placeCueBall, rackOrder } from './rack.js';
 import { CUE_BALL_ID, EIGHT_BALL_ID, TRAPS_PER_PLAYER } from './table.const.js';
 import { ageTraps } from './traps.js';
 
@@ -27,9 +28,15 @@ export function createGame(random?: () => number): GameState {
     winner: null,
     lastOutcome: null,
     pocketedBalls: [],
-    ballInHand: false,
+    // The breaker may move the cue ball anywhere behind the head string first.
+    ballInHand: true,
     trapPlaced: false,
   };
+}
+
+// Where the cue ball may be put down with ball in hand depends on whether this is the break.
+export function placeCueBallInHand(game: GameState, position: Vec2): TableState | null {
+  return placeBallInHand(game.table, position, game.lastOutcome === null);
 }
 
 const FOULS: readonly ShotOutcome[] = ['scratch', 'wrong-ball', 'no-contact', 'timeout'];

@@ -16,7 +16,7 @@ import {
   SHOT_CLOCK_MS,
   createGame,
   forfeitTurn,
-  placeBallInHand,
+  placeCueBallInHand,
   placeTrap,
   resolveShot,
   simulateShot,
@@ -217,7 +217,7 @@ export class RoomStore {
       return 'no-ball-in-hand';
     }
 
-    const table = placeBallInHand(room.game.table, position);
+    const table = placeCueBallInHand(room.game, position);
 
     if (table === null) {
       return 'blocked';

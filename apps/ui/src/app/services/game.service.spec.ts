@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { TRAPS_PER_PLAYER } from '@dirtypool/game';
+import { HEAD_SPOT, TRAPS_PER_PLAYER } from '@dirtypool/game';
 import { ManualFrameScheduler } from '../testing/manual-frame-scheduler';
 import { ManualTimerScheduler } from '../testing/manual-timer-scheduler';
 import { FRAME_SCHEDULER } from '../types/frame-scheduler.type';
@@ -63,9 +63,12 @@ describe('GameService', () => {
     expect(timers.pending).toHaveLength(1);
   });
 
-  it('lets the cue ball be moved only with ball in hand, snapping back from bad spots', () => {
-    service.moveCueBall({ x: 0.5, y: 0.5 });
-    expect(service.table().balls[0]?.position).toEqual(service.game().table.balls[0]?.position);
+  it('places the cue ball behind the line for the break, then anywhere with ball in hand', () => {
+    expect(service.game().ballInHand).toBe(true);
+    service.placeCueBall({ x: 1.5, y: 0.5 });
+    expect(service.game().table.balls[0]?.position).toEqual(HEAD_SPOT);
+    service.placeCueBall({ x: 0.3, y: 0.3 });
+    expect(service.game().table.balls[0]?.position).toEqual({ x: 0.3, y: 0.3 });
 
     timers.fire();
     expect(service.game().ballInHand).toBe(true);

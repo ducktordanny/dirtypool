@@ -16,7 +16,7 @@ import {
   type TrapRequest,
   type Vec2,
 } from '@dirtypool/contracts';
-import { SHOT_CLOCK_MS, placeBallInHand } from '@dirtypool/game';
+import { SHOT_CLOCK_MS, placeCueBallInHand } from '@dirtypool/game';
 import { roomSocketUrl } from '../config/api.const';
 import { ROOM_SOCKET_FACTORY, type RoomSocket } from '../types/room-socket.type';
 import type { RemoteShot } from '../types/remote-shot.type';
@@ -180,7 +180,7 @@ export class RoomService {
       return;
     }
 
-    if (placeBallInHand(game.table, position) === null) {
+    if (placeCueBallInHand(game, position) === null) {
       this.tableState.set(game.table);
       return;
     }

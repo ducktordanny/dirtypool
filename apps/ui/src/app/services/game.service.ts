@@ -4,7 +4,7 @@ import {
   SHOT_CLOCK_MS,
   createGame,
   forfeitTurn,
-  placeBallInHand,
+  placeCueBallInHand,
   placeTrap,
   resolveShot,
   type TableEvent,
@@ -64,7 +64,7 @@ export class GameService {
       return;
     }
 
-    const table = placeBallInHand(game.table, position);
+    const table = placeCueBallInHand(game, position);
 
     if (table !== null) {
       this.gameState.set({ ...game, table });

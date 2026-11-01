@@ -14,7 +14,7 @@ const OUTCOME_MESSAGES: Record<ShotOutcome, string> = {
 
 export function describeGame(game: GameState): string {
   if (game.lastOutcome === null) {
-    return 'Open table. Drag to aim, pull the power bar to shoot.';
+    return 'Break: drag the cue ball behind the line, aim, pull the power bar to shoot.';
   }
 
   const message = OUTCOME_MESSAGES[game.lastOutcome];

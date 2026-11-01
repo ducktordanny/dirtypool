@@ -97,11 +97,16 @@ export function placeCueBall(table: TableState, preferred: Vec2 = HEAD_SPOT): Ta
 }
 
 // Ball in hand: the cue ball may go anywhere on the cloth that is clear of other balls, traps and
-// pocket mouths. Returns null when the spot is not allowed.
-export function placeBallInHand(table: TableState, position: Vec2): TableState | null {
+// pocket mouths, or only behind the head string for the break. Returns null when the spot is not
+// allowed.
+export function placeBallInHand(
+  table: TableState,
+  position: Vec2,
+  kitchenOnly = false,
+): TableState | null {
   const inside =
     position.x >= BALL_RADIUS &&
-    position.x <= TABLE_WIDTH - BALL_RADIUS &&
+    position.x <= (kitchenOnly ? HEAD_SPOT.x : TABLE_WIDTH - BALL_RADIUS) &&
     position.y >= BALL_RADIUS &&
     position.y <= TABLE_HEIGHT - BALL_RADIUS;
   const clearOfBalls = table.balls.every(
