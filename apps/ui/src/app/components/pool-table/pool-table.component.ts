@@ -11,17 +11,20 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import type { Aim, BallId, Shot, TableState, Vec2 } from '@dirtypool/contracts';
+import type { Aim, BallId, Shot, Spin, TableState, Vec2 } from '@dirtypool/contracts';
 import { BALL_RADIUS, TABLE_HEIGHT, TABLE_WIDTH, placeBallInHand } from '@dirtypool/game';
 import { Application, Container, type FederatedPointerEvent, Graphics } from 'pixi.js';
 import {
   AIM_ROTATE_STEP,
+  CUE_FOLLOW_THROUGH,
   CUE_MAX_PULL,
+  FOLLOW_THROUGH_MS,
   MIN_SHOT_POWER,
   STRIKE_DURATION_MS,
   TABLE_ASPECT_RATIO,
 } from '../../config/table-render.const';
 import { FRAME_SCHEDULER } from '../../types/frame-scheduler.type';
+import type { RemoteShot } from '../../types/remote-shot.type';
 import type { Viewport } from '../../types/viewport.type';
 import {
   aimAlong,
@@ -40,10 +43,16 @@ import {
   resetSink,
   startSink,
 } from './ball-sprite.util';
-import { drawAimGuide, drawCue } from './cue.util';
+import { type CueLine, drawAimGuide, drawCue } from './cue.util';
 import { foulTargetPosition } from './foul-target.util';
 import { type PocketBurst, drawPocketBursts, startPocketBurst } from './pocket-burst.util';
 import { drawTableSurface, nearestPocketVisual } from './table-surface.util';
+
+// The cue while it strikes: fixed to where the cue ball was, so it never follows the ball.
+interface Strike extends CueLine {
+  readonly pull: number;
+  readonly alpha: number;
+}
 
 @Component({
   selector: 'dp-pool-table',
@@ -67,8 +76,11 @@ export class PoolTable {
   readonly interactive = input(false);
   // 0..1, drawn as cue pull-back while the player sets the shot power.
   readonly power = input(0);
+  readonly spin = input<Spin>({ x: 0, y: 0 });
   // The opponent's live aim while it is their turn; drawn as a cue without guide lines.
   readonly remoteAim = input<Aim | null>(null);
+  // The opponent's shot once it arrives: their cue strikes and fades as the balls set off.
+  readonly remoteShot = input<RemoteShot | null>(null);
   // Balls this player may hit first; null means anything goes. Aiming elsewhere is marked.
   readonly legalTargets = input<readonly BallId[] | null>(null);
   // Ball in hand: the cue ball can be dragged to a new spot before the shot.
@@ -87,12 +99,12 @@ export class PoolTable {
   private readonly app = signal<Application | null>(null);
   private readonly viewport = signal<Viewport>({ scale: 1, offset: { x: 0, y: 0 } });
   private readonly direction = signal<Vec2 | null>(null);
-  private readonly strikePull = signal<number | null>(null);
+  private readonly strike = signal<Strike | null>(null);
   private readonly aim = computed(() => {
     if (this.interactive()) {
       const direction = this.direction();
 
-      return direction === null ? null : aimAlong(this.table(), direction);
+      return direction === null ? null : aimAlong(this.table(), direction, this.spin());
     }
 
     const remote = this.remoteAim();
@@ -100,12 +112,6 @@ export class PoolTable {
     return remote === null ? null : aimAlong(this.table(), remote.direction);
   });
   private readonly cuePull = computed(() => {
-    const strike = this.strikePull();
-
-    if (strike !== null) {
-      return strike;
-    }
-
     const power = this.interactive() ? this.power() : (this.remoteAim()?.power ?? 0);
 
     return power * CUE_MAX_PULL;
@@ -156,8 +162,9 @@ export class PoolTable {
       const viewport = this.viewport();
       const aim = this.aim();
       const pull = this.cuePull();
+      const strike = this.strike();
       const dragging = this.draggingCue();
-      const showGuide = this.interactive() && this.strikePull() === null && !dragging;
+      const showGuide = this.interactive() && strike === null && !dragging;
       const legal = this.legalTargets();
       const table = this.table();
       const grabbable = this.interactive() && this.ballInHand() && !dragging;
@@ -166,6 +173,15 @@ export class PoolTable {
         if (app === null) {
           return;
         }
+
+        if (strike !== null) {
+          this.guide.clear();
+          this.cue.alpha = strike.alpha;
+          drawCue(this.cue, strike, strike.pull, viewport);
+          return;
+        }
+
+        this.cue.alpha = 1;
 
         if (aim === null || dragging) {
           this.guide.clear();
@@ -210,43 +226,41 @@ export class PoolTable {
 
       untracked(() => {
         this.aiming = false;
-        this.strikePull.set(null);
         this.direction.set(interactive ? defaultAimDirection(this.table()) : null);
+      });
+    });
+
+    // The balls are already rolling by the time the opponent's shot arrives, so their cue
+    // starts at the ball and only follows through.
+    effect(() => {
+      const remote = this.remoteShot();
+
+      untracked(() => {
+        const cue = remote === null ? null : cueBall(this.table());
+
+        if (remote !== null && cue !== null && !this.interactive()) {
+          this.runStrike({ origin: cue.position, direction: remote.shot.direction }, 0);
+        }
       });
     });
   }
 
-  // Plays the strike animation, then emits the shot.
+  // Plays the strike animation and emits the shot at the moment of impact.
   fire(requestedPower: number): void {
     const aim = this.aim();
     const power = Math.min(1, Math.max(0, requestedPower));
 
-    if (aim === null || this.strikePull() !== null || power < MIN_SHOT_POWER) {
+    if (aim === null || this.strike() !== null || power < MIN_SHOT_POWER) {
       return;
     }
 
-    const shot: Shot = { direction: aim.direction, power };
-    const pull = power * CUE_MAX_PULL;
-    let startedAt: number | null = null;
+    const spin = this.spin();
+    const shot: Shot =
+      spin.x === 0 && spin.y === 0
+        ? { direction: aim.direction, power }
+        : { direction: aim.direction, power, spin };
 
-    const tick = (timestamp: number): void => {
-      startedAt ??= timestamp;
-
-      const progress = Math.min(1, (timestamp - startedAt) / STRIKE_DURATION_MS);
-
-      this.strikePull.set(pull * (1 - progress * progress));
-
-      if (progress < 1) {
-        this.frames.request(tick);
-        return;
-      }
-
-      this.shot.emit(shot);
-      this.strikePull.set(null);
-    };
-
-    this.strikePull.set(pull);
-    this.frames.request(tick);
+    this.runStrike(aim, power * CUE_MAX_PULL, () => this.shot.emit(shot));
   }
 
   protected onKeyDown(event: KeyboardEvent): void {
@@ -269,7 +283,48 @@ export class PoolTable {
   }
 
   private canAim(): boolean {
-    return this.interactive() && this.strikePull() === null;
+    return this.interactive() && this.strike() === null;
+  }
+
+  // Pulls the cue into the ball, calls `onImpact`, then lets it follow through and fade out.
+  private runStrike(line: CueLine, pull: number, onImpact?: () => void): void {
+    let startedAt: number | null = null;
+    let struck = pull === 0;
+
+    const tick = (timestamp: number): void => {
+      startedAt ??= timestamp;
+
+      const elapsed = timestamp - startedAt;
+
+      if (!struck) {
+        const progress = Math.min(1, elapsed / STRIKE_DURATION_MS);
+
+        this.strike.set({ ...line, pull: pull * (1 - progress * progress), alpha: 1 });
+
+        if (progress < 1) {
+          this.frames.request(tick);
+          return;
+        }
+
+        struck = true;
+        startedAt = timestamp;
+        onImpact?.();
+      }
+
+      const progress = Math.min(1, (timestamp - startedAt) / FOLLOW_THROUGH_MS);
+
+      if (progress < 1) {
+        this.strike.set({ ...line, pull: -CUE_FOLLOW_THROUGH * progress, alpha: 1 - progress });
+        this.frames.request(tick);
+        return;
+      }
+
+      this.strike.set(null);
+      this.cue.clear();
+    };
+
+    this.strike.set({ ...line, pull, alpha: 1 });
+    this.frames.request(tick);
   }
 
   private async mount(): Promise<void> {

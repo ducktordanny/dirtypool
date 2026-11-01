@@ -11,7 +11,9 @@ import {
   POCKETS,
   REST_SPEED,
   ROLLING_DECELERATION,
+  SIDE_SPIN_GRIP,
   SPEED_DRAG,
+  SPIN_DECAY,
   TABLE_HEIGHT,
   TABLE_WIDTH,
 } from './table.const.js';
@@ -38,6 +40,8 @@ interface MutableBall {
   y: number;
   vx: number;
   vy: number;
+  sx: number;
+  sy: number;
   pocketed: boolean;
 }
 
@@ -70,8 +74,13 @@ function integrate(balls: MutableBall[]): void {
     const speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
 
     if (speed === 0) {
+      ball.sx = 0;
+      ball.sy = 0;
       continue;
     }
+
+    ball.sx = decay(ball.sx, SPIN_DECAY * FIXED_STEP);
+    ball.sy = decay(ball.sy, SPIN_DECAY * FIXED_STEP);
 
     const slowed = speed - (ROLLING_DECELERATION + SPEED_DRAG * speed) * FIXED_STEP;
     // On a pocket lip the ball keeps creeping until it drops, however slow it is.
@@ -125,11 +134,15 @@ function resolveBallCollisions(balls: MutableBall[], events: TableEvent[]): void
       }
 
       const impulse = ((1 + BALL_RESTITUTION) / 2) * approachSpeed;
+      const aBefore = { vx: a.vx, vy: a.vy };
+      const bBefore = { vx: b.vx, vy: b.vy };
 
       a.vx -= impulse * nx;
       a.vy -= impulse * ny;
       b.vx += impulse * nx;
       b.vy += impulse * ny;
+      applyFollow(a, aBefore, impulse);
+      applyFollow(b, bBefore, impulse);
 
       if (a.id === CUE_BALL_ID) {
         events.push({ kind: 'cue-contact', ballId: b.id });
@@ -165,9 +178,61 @@ function resolveCushions(balls: MutableBall[], events: TableEvent[]): void {
     }
 
     if (speed > 0) {
+      applySideSpin(ball, speed);
       events.push({ kind: 'cushion', ballId: ball.id, speed });
     }
   }
+}
+
+// Top or back spin turns into velocity along the ball's old line of travel the moment the hit
+// takes speed away: a full hit converts all of it, a thin cut barely any.
+function applyFollow(ball: MutableBall, before: { vx: number; vy: number }, impulse: number): void {
+  if (ball.sy === 0) {
+    return;
+  }
+
+  const speed = Math.sqrt(before.vx * before.vx + before.vy * before.vy);
+
+  if (speed === 0) {
+    return;
+  }
+
+  const share = Math.min(1, impulse / speed);
+  const follow = ball.sy * share;
+
+  ball.vx += (follow * before.vx) / speed;
+  ball.vy += (follow * before.vy) / speed;
+  ball.sy -= follow;
+}
+
+// Side spin grips the cushion and kicks the ball sideways along it, more so the squarer the hit.
+// Positive spin sends it to the right of its outgoing direction, as seen on screen.
+function applySideSpin(ball: MutableBall, inbound: number): void {
+  if (ball.sx === 0) {
+    return;
+  }
+
+  const speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+
+  if (speed === 0) {
+    return;
+  }
+
+  const share = Math.min(1, inbound / speed);
+  const kick = ball.sx * SIDE_SPIN_GRIP * share;
+
+  // Rightwards of the outgoing direction, in table coordinates with y pointing down.
+  ball.vx += (-ball.vy / speed) * kick;
+  ball.vy += (ball.vx / speed) * kick;
+  ball.sx -= ball.sx * share;
+}
+
+function decay(spin: number, amount: number): number {
+  if (spin > 0) {
+    return Math.max(0, spin - amount);
+  }
+
+  return Math.min(0, spin + amount);
 }
 
 // Reflects only when the ball is still moving into the cushion (outward sign given) and
@@ -264,6 +329,8 @@ function capturePockets(balls: MutableBall[], events: TableEvent[]): void {
 
       if (dx * dx + dy * dy < pocket.radius * pocket.radius) {
         ball.pocketed = true;
+        ball.sx = 0;
+        ball.sy = 0;
         ball.x = pocket.position.x;
         ball.y = pocket.position.y;
         ball.vx = 0;
@@ -282,6 +349,8 @@ function toMutable(ball: Ball): MutableBall {
     y: ball.position.y,
     vx: ball.velocity.x,
     vy: ball.velocity.y,
+    sx: ball.spin?.x ?? 0,
+    sy: ball.spin?.y ?? 0,
     pocketed: ball.pocketed,
   };
 }
@@ -292,5 +361,6 @@ function toBall(ball: MutableBall): Ball {
     position: { x: ball.x, y: ball.y },
     velocity: { x: ball.vx, y: ball.vy },
     pocketed: ball.pocketed,
+    ...(ball.sx === 0 && ball.sy === 0 ? {} : { spin: { x: ball.sx, y: ball.sy } }),
   };
 }

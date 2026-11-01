@@ -18,6 +18,7 @@ import {
 import { SHOT_CLOCK_MS, placeBallInHand } from '@dirtypool/game';
 import { roomSocketUrl } from '../config/api.const';
 import { ROOM_SOCKET_FACTORY, type RoomSocket } from '../types/room-socket.type';
+import type { RemoteShot } from '../types/remote-shot.type';
 import type { ShotAnnouncement } from '../types/shot-announcement.type';
 import type { ShotClock } from '../types/shot-clock.type';
 import { TIMER_SCHEDULER } from '../types/timer-scheduler.type';
@@ -70,6 +71,8 @@ export class RoomService {
   readonly error = computed(() => this.errorState());
   readonly clock = computed(() => this.clockState());
   readonly opponentAim = computed(() => this.opponentAimState());
+  // The opponent's latest shot, so the table can show their cue strike as the balls set off.
+  readonly opponentShot = computed(() => this.opponentShotState());
   // The outcome of the most recent shot, numbered so the UI can replay an announcement.
   readonly lastShot = computed(() => this.lastShotState());
   readonly canShoot = computed(() => {
@@ -99,6 +102,7 @@ export class RoomService {
   private readonly errorState = signal<string | null>(null);
   private readonly clockState = signal<ShotClock | null>(null);
   private readonly opponentAimState = signal<Aim | null>(null);
+  private readonly opponentShotState = signal<RemoteShot | null>(null);
   private readonly lastShotState = signal<ShotAnnouncement | null>(null);
   private socket: RoomSocket | null = null;
   private pendingEntry: PendingEntry | null = null;
@@ -349,6 +353,12 @@ export class RoomService {
         this.setClock(message.clock);
         return;
       case 'shot-played':
+        if (message.playerIndex !== this.playerIndexState()) {
+          const previous = this.opponentShotState();
+
+          this.opponentShotState.set({ seq: (previous?.seq ?? 0) + 1, shot: message.shot });
+        }
+
         this.animate(message.shot, message.game, message.clock);
         return;
       case 'turn-passed':

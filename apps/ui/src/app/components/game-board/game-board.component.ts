@@ -8,19 +8,28 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import type { Aim, GameState, PlayerIndex, Shot, TableState, Vec2 } from '@dirtypool/contracts';
+import type {
+  Aim,
+  GameState,
+  PlayerIndex,
+  Shot,
+  Spin,
+  TableState,
+  Vec2,
+} from '@dirtypool/contracts';
 import { AudioService } from '../../services/audio.service';
 import { legalTargetIds } from '../../utils/legal-targets.util';
+import type { RemoteShot } from '../../types/remote-shot.type';
 import type { ShotAnnouncement } from '../../types/shot-announcement.type';
 import type { ShotClock } from '../../types/shot-clock.type';
 import { BallTray } from '../ball-tray/ball-tray.component';
 import { MatchHud, type PlayerNames } from '../match-hud/match-hud.component';
 import { PoolTable } from '../pool-table/pool-table.component';
-import { MatchResult, OutcomeBanner, PowerSlider } from '../ui';
+import { MatchResult, OutcomeBanner, PowerSlider, SpinControl } from '../ui';
 
 // HUD, power bar, table and tray laid out together; used by both hotseat and online play.
 @Component({
-  imports: [BallTray, MatchHud, MatchResult, OutcomeBanner, PoolTable, PowerSlider],
+  imports: [BallTray, MatchHud, MatchResult, OutcomeBanner, PoolTable, PowerSlider, SpinControl],
   selector: 'dp-game-board',
   styleUrl: './game-board.component.scss',
   templateUrl: './game-board.component.html',
@@ -34,6 +43,7 @@ export class GameBoard {
   readonly viewer = input<PlayerIndex | null>(null);
   readonly clock = input<ShotClock | null>(null);
   readonly remoteAim = input<Aim | null>(null);
+  readonly remoteShot = input<RemoteShot | null>(null);
   readonly announcement = input<ShotAnnouncement | null>(null);
   readonly shot = output<Shot>();
   readonly aim = output<Aim>();
@@ -42,6 +52,8 @@ export class GameBoard {
   readonly restart = output();
 
   protected readonly power = signal(0);
+  // Resets after every shot, as players expect from 8 Ball Pool.
+  protected readonly spin = signal<Spin>({ x: 0, y: 0 });
   protected readonly legalTargets = computed(() => legalTargetIds(this.game()));
   protected readonly ballInHand = computed(() => this.interactive() && this.game().ballInHand);
   protected readonly result = computed(() => {
@@ -79,5 +91,10 @@ export class GameBoard {
         }
       });
     });
+  }
+
+  protected onShot(shot: Shot): void {
+    this.spin.set({ x: 0, y: 0 });
+    this.shot.emit(shot);
   }
 }

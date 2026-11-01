@@ -6,20 +6,31 @@ export type Vec2 = z.infer<typeof vec2Schema>;
 export const ballIdSchema = z.number().int().min(0).max(15);
 export type BallId = z.infer<typeof ballIdSchema>;
 
+// Spin the ball still carries while rolling: x is side spin, y is top (+) or back (-) spin,
+// both in m/s of velocity they can still turn into. Absent once the ball is at rest.
 export const ballSchema = z.object({
   id: ballIdSchema,
   position: vec2Schema,
   velocity: vec2Schema,
   pocketed: z.boolean(),
+  spin: vec2Schema.optional(),
 });
 export type Ball = z.infer<typeof ballSchema>;
 
 export const tableStateSchema = z.object({ balls: z.array(ballSchema).length(16) });
 export type TableState = z.infer<typeof tableStateSchema>;
 
+// Where the cue tip strikes the ball, as a point in the unit disk: x right, y up (top spin).
+export const spinSchema = vec2Schema.refine(
+  ({ x, y }) => x * x + y * y <= 1 + 1e-6,
+  'Spin must lie inside the unit disk',
+);
+export type Spin = z.infer<typeof spinSchema>;
+
 export const shotSchema = z.object({
   direction: vec2Schema,
   power: z.number().min(0).max(1),
+  spin: spinSchema.optional(),
 });
 export type Shot = z.infer<typeof shotSchema>;
 

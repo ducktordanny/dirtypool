@@ -1,6 +1,12 @@
 import type { Shot, TableState } from '@dirtypool/contracts';
 import { isAtRest, stepTable, type TableEvent } from './physics.js';
-import { CUE_BALL_ID, FIXED_STEP, MAX_SHOT_SPEED, MAX_SHOT_STEPS } from './table.const.js';
+import {
+  CUE_BALL_ID,
+  FIXED_STEP,
+  MAX_SHOT_SPEED,
+  MAX_SHOT_STEPS,
+  MAX_SPIN,
+} from './table.const.js';
 import { normalize, scale } from './vec2.util.js';
 
 export interface ShotResult {
@@ -12,10 +18,13 @@ export interface ShotResult {
 
 export function startShot(table: TableState, shot: Shot): TableState {
   const velocity = scale(normalize(shot.direction), shot.power * MAX_SHOT_SPEED);
+  const spin = shot.spin === undefined ? undefined : scale(shot.spin, shot.power * MAX_SPIN);
+  const struck =
+    spin === undefined || (spin.x === 0 && spin.y === 0) ? { velocity } : { velocity, spin };
 
   return {
     balls: table.balls.map((ball) =>
-      ball.id === CUE_BALL_ID && !ball.pocketed ? { ...ball, velocity } : ball,
+      ball.id === CUE_BALL_ID && !ball.pocketed ? { ...ball, ...struck } : ball,
     ),
   };
 }

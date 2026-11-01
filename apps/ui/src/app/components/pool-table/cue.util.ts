@@ -29,7 +29,9 @@ const DASH_LENGTH = 0.03;
 const DASH_GAP = 0.02;
 const GUIDE_LENGTH = 0.22;
 
-export function drawCue(graphics: Graphics, aim: ShotAim, pull: number, viewport: Viewport): void {
+export type CueLine = Pick<ShotAim, 'origin' | 'direction'>;
+
+export function drawCue(graphics: Graphics, aim: CueLine, pull: number, viewport: Viewport): void {
   const back = scale(aim.direction, -1);
   const side = { x: -back.y, y: back.x };
   const tip = add(aim.origin, scale(back, BALL_RADIUS + CUE_TIP_GAP + pull));
@@ -86,7 +88,7 @@ export function drawAimGuide(
 
   if (aim.cueDeflection !== null) {
     const end = toScreen(
-      add(aim.ghost, scale(aim.cueDeflection, GUIDE_LENGTH * (1 - aim.fullness) * 0.8)),
+      add(aim.ghost, scale(aim.cueDeflection, GUIDE_LENGTH * aim.cueSpeed * 0.8)),
       viewport,
     );
 

@@ -1,20 +1,25 @@
 <dp-match-hud [game]="game()" [names]="names()" [clock]="clock()" />
 <div class="arena">
-  <dp-power-slider
-    [disabled]="!interactive()"
-    (powerChange)="power.set($event)"
-    (release)="pool.fire($event)"
-  />
+  <div class="controls">
+    <dp-power-slider
+      [disabled]="!interactive()"
+      (powerChange)="power.set($event)"
+      (release)="pool.fire($event)"
+    />
+    <dp-spin-control [(spin)]="spin" [disabled]="!interactive()" />
+  </div>
   <div class="stage">
     <dp-pool-table
       #pool
       [table]="table()"
       [interactive]="interactive()"
       [power]="power()"
+      [spin]="spin()"
       [remoteAim]="remoteAim()"
+      [remoteShot]="remoteShot()"
       [legalTargets]="legalTargets()"
       [ballInHand]="ballInHand()"
-      (shot)="shot.emit($event)"
+      (shot)="onShot($event)"
       (aimChange)="aim.emit($event)"
       (cueMove)="cueMove.emit($event)"
       (cuePlace)="cuePlace.emit($event)"

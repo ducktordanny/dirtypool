@@ -12,6 +12,17 @@ $breakpoint: 640px;
   gap: var(--space-3);
 }
 
+.controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.controls dp-power-slider {
+  flex: 1;
+}
+
 .stage {
   position: relative;
   flex: 1;
@@ -21,5 +32,13 @@ $breakpoint: 640px;
 @media (max-width: $breakpoint) {
   .arena {
     flex-direction: column-reverse;
+  }
+
+  .controls {
+    flex-direction: row;
+  }
+
+  .controls dp-power-slider {
+    width: auto;
   }
 }

@@ -33,6 +33,7 @@
       [viewer]="room.playerIndex()"
       [clock]="room.clock()"
       [remoteAim]="room.opponentAim()"
+      [remoteShot]="room.opponentShot()"
       [announcement]="room.lastShot()"
       (shot)="shoot($event)"
       (aim)="room.sendAim($event)"

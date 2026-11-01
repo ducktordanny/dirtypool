@@ -17,7 +17,7 @@ The base game is playable in hotseat mode: one screen, two players, simplified 8
 
 ## Plan
 
-1. **Base** (done): deterministic simulation, Pixi table, aim-and-power controls with a cue, hotseat play, websocket rooms.
+1. **Base** (done): deterministic simulation, Pixi table, aim-and-power controls with a cue, spin (top, back and side) set on the cue ball, hotseat play, websocket rooms.
 2. **Online UI** (done): pick a nickname, create a room, join by code or pick an open room from the list on the home page, `/room/CODE` works as an invite link, shots are animated locally and the server state is adopted. A room seats two players; a third join is refused. A 30 second shot clock passes the turn, enforced by the server online and locally in hotseat. A dropped connection or a refresh rejoins the same seat: seats are held for two minutes and the browser keeps a per-tab seat token.
 3. **Traps**: simultaneous placement phase, five starter traps (bumper, wall, fan, portal, black hole), expiry after a few rounds.
 4. **Feel**: slow-mo on pocketing, debug panel for physics knobs.

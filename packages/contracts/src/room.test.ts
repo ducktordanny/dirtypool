@@ -25,3 +25,14 @@ test('rejects a room code that is not four upper-case letters', () => {
 
   assert.equal(result.success, false);
 });
+
+test('accepts a shot with spin inside the unit disk and rejects one outside', () => {
+  const shoot = (spin: { x: number; y: number }) =>
+    clientMessageSchema.safeParse({
+      type: 'shoot',
+      shot: { direction: { x: 1, y: 0 }, power: 0.5, spin },
+    }).success;
+
+  assert.equal(shoot({ x: 0.6, y: -0.8 }), true);
+  assert.equal(shoot({ x: 0.9, y: 0.9 }), false);
+});

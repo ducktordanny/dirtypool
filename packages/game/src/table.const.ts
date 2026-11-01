@@ -51,6 +51,13 @@ export const REST_SPEED = 0.02;
 export const BALL_RESTITUTION = 0.96;
 export const CUSHION_RESTITUTION = 0.7;
 
+// Spin is stored as the velocity it can still turn into. A full-power shot struck at the edge
+// of the cue ball carries MAX_SPIN; it bleeds off at SPIN_DECAY per second while rolling.
+export const MAX_SPIN = 2.4;
+export const SPIN_DECAY = 0.6;
+// Fraction of side spin that becomes sideways velocity on a square cushion hit.
+export const SIDE_SPIN_GRIP = 0.5;
+
 // Every client and the server must step with exactly this value for identical results.
 export const FIXED_STEP = 1 / 480;
 export const MAX_SHOT_SECONDS = 60;

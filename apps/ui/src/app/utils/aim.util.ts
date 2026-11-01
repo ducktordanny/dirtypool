@@ -1,8 +1,10 @@
-import type { Ball, TableState, Vec2 } from '@dirtypool/contracts';
+import type { Ball, Spin, TableState, Vec2 } from '@dirtypool/contracts';
 import {
   BALL_DIAMETER,
   BALL_RADIUS,
   CUE_BALL_ID,
+  MAX_SHOT_SPEED,
+  MAX_SPIN,
   TABLE_HEIGHT,
   TABLE_WIDTH,
   add,
@@ -69,7 +71,13 @@ export function rotateDirection(direction: Vec2, radians: number): Vec2 {
   });
 }
 
-export function aimAlong(table: TableState, direction: Vec2): ShotAim | null {
+// Spin bends the predicted cue ball path after contact: top spin carries it on, back spin pulls
+// it back along the shot line, in the same proportion the simulation applies.
+export function aimAlong(
+  table: TableState,
+  direction: Vec2,
+  spin: Spin = { x: 0, y: 0 },
+): ShotAim | null {
   const cue = cueBall(table);
 
   if (cue === null) {
@@ -103,6 +111,7 @@ export function aimAlong(table: TableState, direction: Vec2): ShotAim | null {
       targetBallId: null,
       targetDirection: null,
       cueDeflection: null,
+      cueSpeed: 0,
       fullness: 0,
     };
   }
@@ -110,6 +119,8 @@ export function aimAlong(table: TableState, direction: Vec2): ShotAim | null {
   const targetDirection = normalize(subtract(target.position, ghost));
   const fullness = Math.max(0, dot(direction, targetDirection));
   const tangent = subtract(direction, scale(targetDirection, fullness));
+  const follow = scale(direction, (spin.y * MAX_SPIN * fullness) / MAX_SHOT_SPEED);
+  const deflection = add(tangent, follow);
 
   return {
     origin,
@@ -117,7 +128,8 @@ export function aimAlong(table: TableState, direction: Vec2): ShotAim | null {
     ghost,
     targetBallId: target.id,
     targetDirection,
-    cueDeflection: length(tangent) < 1e-3 ? null : normalize(tangent),
+    cueDeflection: length(deflection) < 1e-3 ? null : normalize(deflection),
+    cueSpeed: Math.min(1, length(deflection)),
     fullness,
   };
 }

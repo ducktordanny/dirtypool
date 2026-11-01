@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import type { Ball, TableState } from '@dirtypool/contracts';
 import { isAtRest, stepTable } from './physics.js';
 import { createRackedTable } from './rack.js';
-import { simulateShot } from './simulate.js';
+import { simulateShot, startShot } from './simulate.js';
 import { BALL_DIAMETER, BALL_RADIUS, POCKETS, TABLE_HEIGHT, TABLE_WIDTH } from './table.const.js';
 import { distance } from './vec2.util.js';
 
@@ -96,9 +96,57 @@ test('a cushion reflects the ball back into play', () => {
   assert.ok(settled.balls[0]!.position.y > TABLE_HEIGHT / 2);
 });
 
+test('top spin follows through and back spin draws back after a full hit', () => {
+  const cueSpeedAfterContact = (spinY: number): number => {
+    let table = startShot(tableWith([ball(0, 0.8, 0.5, 0, 0), ball(1, 1.2, 0.5, 0, 0)]), {
+      direction: { x: 1, y: 0 },
+      power: 0.5,
+      spin: { x: 0, y: spinY },
+    });
+
+    for (;;) {
+      const result = stepTable(table);
+
+      table = result.table;
+
+      if (result.events.some((event) => event.kind === 'collision')) {
+        return table.balls[0]!.velocity.x;
+      }
+    }
+  };
+
+  assert.ok(Math.abs(cueSpeedAfterContact(0)) < 0.2);
+  assert.ok(cueSpeedAfterContact(1) > 0.5);
+  assert.ok(cueSpeedAfterContact(-1) < -0.5);
+});
+
+test('side spin changes the angle off a cushion', () => {
+  const shoot = (spinX: number) =>
+    simulateShot(tableWith([ball(0, 1, 0.5, 0, 0)]), {
+      direction: { x: 0, y: 1 },
+      power: 0.3,
+      spin: { x: spinX, y: 0 },
+    }).table.balls[0]!.position.x;
+
+  // Right english sends the ball to the right of where it would otherwise rebound to.
+  assert.ok(Math.abs(shoot(0) - 1) < 1e-6);
+  assert.ok(shoot(1) > 1 + 0.05);
+  assert.ok(shoot(-1) < 1 - 0.05);
+});
+
+test('spin is gone once the balls stop', () => {
+  const { table } = simulateShot(createRackedTable(), {
+    direction: { x: 1, y: 0.01 },
+    power: 0.8,
+    spin: { x: 0.5, y: -0.5 },
+  });
+
+  assert.ok(table.balls.every((ball) => ball.spin === undefined));
+});
+
 test('the same shot from the same table is bit-for-bit reproducible', () => {
   const table = createRackedTable();
-  const shot = { direction: { x: 0.98, y: 0.02 }, power: 0.9 };
+  const shot = { direction: { x: 0.98, y: 0.02 }, power: 0.9, spin: { x: 0.3, y: -0.5 } };
 
   const first = simulateShot(table, shot);
   const second = simulateShot(table, shot);

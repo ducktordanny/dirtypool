@@ -14,6 +14,9 @@ export const CUE_TIP_GAP = 0.012;
 // A full-power shot draws the cue tip this far back from the cue ball.
 export const CUE_MAX_PULL = 0.32;
 export const STRIKE_DURATION_MS = 90;
+// After impact the cue keeps going this far past where the ball sat while it fades out.
+export const CUE_FOLLOW_THROUGH = 0.05;
+export const FOLLOW_THROUGH_MS = 220;
 // Radians per arrow-key press while fine-tuning the aim.
 export const AIM_ROTATE_STEP = 0.0035;
 
