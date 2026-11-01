@@ -1,12 +1,12 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { Component, inject } from '@angular/core';
 import { RouterLink, RouterOutlet } from '@angular/router';
-import { SoundToggle } from './components/ui';
+import { BallIcon, SoundToggle } from './components/ui';
 import { AudioService } from './services/audio.service';
 import { HeaderActionsService } from './services/header-actions.service';
 
 @Component({
-  imports: [NgTemplateOutlet, RouterLink, RouterOutlet, SoundToggle],
+  imports: [BallIcon, NgTemplateOutlet, RouterLink, RouterOutlet, SoundToggle],
   selector: 'dp-root',
   styleUrl: './app.component.scss',
   templateUrl: './app.component.html',

@@ -19,6 +19,9 @@
 }
 
 .title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   color: var(--color-text);
   font-size: 1.25rem;
   font-weight: 700;
