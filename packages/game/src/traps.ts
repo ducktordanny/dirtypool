@@ -10,6 +10,7 @@ import {
   BALL_RADIUS,
   BUMPER_RADIUS,
   POCKETS,
+  PORTAL_RADIUS,
   TABLE_HEIGHT,
   TABLE_WIDTH,
   TRAP_CLEARANCE,
@@ -20,6 +21,7 @@ import {
 import { normalize } from './vec2.util.js';
 
 // Solid part of a round trap for placement: fields such as wells only need their core clear.
+// A portal mouth also keeps a ball's width free so what comes out of it has room to land.
 const DISC_FOOTPRINT: Readonly<Record<Exclude<TrapKind, 'wall' | 'plug'>, number>> = {
   bumper: BUMPER_RADIUS,
   spring: BUMPER_RADIUS,
@@ -29,6 +31,7 @@ const DISC_FOOTPRINT: Readonly<Record<Exclude<TrapKind, 'wall' | 'plug'>, number
   hole: BALL_RADIUS,
   mud: BALL_RADIUS,
   ice: BALL_RADIUS,
+  portal: PORTAL_RADIUS + BALL_RADIUS,
 };
 // A wall is checked at this many points along its length.
 const WALL_SAMPLES = 5;
@@ -48,6 +51,10 @@ export function needsDirection(kind: TrapKind): boolean {
 
 export function needsGroup(kind: TrapKind): boolean {
   return kind === 'magnet';
+}
+
+export function needsExit(kind: TrapKind): boolean {
+  return kind === 'portal';
 }
 
 // Radius of the disc a trap needs clear around its centre, for marking a blocked drop.
@@ -113,11 +120,16 @@ export function placeTrap(game: GameState, request: TrapRequest): TrapPlacement 
 }
 
 // On the cloth and clear of balls, pocket mouths and other traps; a plug must sit on a free
-// pocket instead. Walls and fans need a direction, magnets a group.
+// pocket instead. Walls and fans need a direction, magnets a group, portals a second mouth.
 export function canPlaceTrap(table: TableState, request: TrapRequest): boolean {
   const prepared = prepare(request);
 
   return prepared !== null && fits(table, prepared);
+}
+
+// Whether the first mouth of a portal can go here, before the player has picked the other one.
+export function canPlacePortalMouth(table: TableState, position: Vec2): boolean {
+  return fits(table, { kind: 'portal', position });
 }
 
 // Ball in hand and spotting must avoid trap footprints too.
@@ -151,6 +163,7 @@ function prepare(request: TrapRequest): TrapRequest | null {
       ? normalize(request.direction)
       : undefined;
   const group = needsGroup(kind) ? request.group : undefined;
+  const exit = needsExit(kind) ? request.exit : undefined;
 
   if (
     needsDirection(kind) &&
@@ -163,11 +176,16 @@ function prepare(request: TrapRequest): TrapRequest | null {
     return null;
   }
 
+  if (needsExit(kind) && (exit === undefined || within(exit, position, trapFootprint(kind) * 2))) {
+    return null;
+  }
+
   return {
     kind,
     position,
     ...(direction === undefined ? {} : { direction }),
     ...(group === undefined ? {} : { group }),
+    ...(exit === undefined ? {} : { exit }),
   };
 }
 
@@ -215,6 +233,16 @@ function footprint(trap: TrapRequest): Footprint[] {
           radius: WALL_RADIUS,
         };
       });
+    }
+    case 'portal': {
+      const radius = DISC_FOOTPRINT.portal;
+
+      return trap.exit === undefined
+        ? [{ point: trap.position, radius }]
+        : [
+            { point: trap.position, radius },
+            { point: trap.exit, radius },
+          ];
     }
     default:
       return [{ point: trap.position, radius: DISC_FOOTPRINT[trap.kind] }];

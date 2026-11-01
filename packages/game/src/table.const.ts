@@ -102,6 +102,10 @@ export const WALL_DIRECTIONS: readonly Vec2[] = [
   { x: 0, y: 1 },
   { x: -SQRT_HALF, y: SQRT_HALF },
 ];
+// A portal mouth takes any ball whose centre gets this close and lets it out of the other mouth
+// just past its edge, so it is not taken straight back.
+export const PORTAL_RADIUS = 0.04;
+export const PORTAL_EXIT_OFFSET = PORTAL_RADIUS + 0.002;
 // Placement keeps this much cloth between a trap's footprint and anything else.
 export const TRAP_CLEARANCE = 0.01;
 export const TRAPS_PER_PLAYER = 4;

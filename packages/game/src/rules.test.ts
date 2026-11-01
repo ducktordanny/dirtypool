@@ -11,7 +11,7 @@ import {
   TRAPS_PER_PLAYER,
   TRAP_LIFETIME_SHOTS,
 } from './table.const.js';
-import { canPlaceTrap, placeTrap, snapTrapPosition } from './traps.js';
+import { canPlacePortalMouth, canPlaceTrap, placeTrap, snapTrapPosition } from './traps.js';
 
 test('the break keeps the table open: pots keep the turn, any first contact is fine', () => {
   const game = createGame();
@@ -260,6 +260,47 @@ test('traps need clear cloth away from balls, pockets and each other', () => {
     canPlaceTrap(table, { kind: 'magnet', position: { x: 1, y: 0.3 }, group: 'solids' }),
     true,
   );
+});
+
+test('a portal needs two mouths, apart from each other and clear like any trap', () => {
+  const table = createGame().table;
+  const mouth = { x: 0.4, y: 0.3 };
+
+  assert.equal(canPlaceTrap(table, { kind: 'portal', position: mouth }), false);
+  assert.equal(canPlacePortalMouth(table, mouth), true);
+  assert.equal(canPlacePortalMouth(table, { x: 0.03, y: 0.3 }), false);
+  assert.equal(
+    canPlaceTrap(table, { kind: 'portal', position: mouth, exit: { x: 0.5, y: 0.3 } }),
+    false,
+  );
+  assert.equal(
+    canPlaceTrap(table, { kind: 'portal', position: mouth, exit: { x: 1.6, y: 0.9 } }),
+    true,
+  );
+  assert.equal(
+    canPlaceTrap(table, {
+      kind: 'portal',
+      position: mouth,
+      exit: { x: HEAD_SPOT.x, y: HEAD_SPOT.y },
+    }),
+    false,
+  );
+
+  const placed = placeTrap(createGame(), {
+    kind: 'portal',
+    position: mouth,
+    exit: { x: 1.6, y: 0.9 },
+  });
+
+  assert.equal(placed.kind, 'placed');
+
+  if (placed.kind === 'placed') {
+    assert.equal(
+      canPlaceTrap(placed.game.table, { kind: 'bumper', position: { x: 1.6, y: 0.9 } }),
+      false,
+    );
+    assert.equal(placeBallInHand(placed.game.table, { x: 1.62, y: 0.9 }), null);
+  }
 });
 
 test('a plug snaps onto the pocket it is dropped near and each pocket takes one', () => {

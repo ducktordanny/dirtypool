@@ -25,7 +25,8 @@ export type BallGroup = z.infer<typeof ballGroupSchema>;
 
 // Bumpers and springs bounce balls away, walls block them, fans push them along, wells pull them
 // in, magnets pull one group only, holes swallow what reaches the middle (counted as pocketed),
-// mud and ice change the cloth under them, and a plug closes a pocket.
+// mud and ice change the cloth under them, a plug closes a pocket, and a portal has two mouths:
+// a ball rolling into one comes out of the other.
 export const trapKindSchema = z.enum([
   'bumper',
   'spring',
@@ -37,6 +38,7 @@ export const trapKindSchema = z.enum([
   'mud',
   'ice',
   'plug',
+  'portal',
 ]);
 export type TrapKind = z.infer<typeof trapKindSchema>;
 
@@ -48,6 +50,8 @@ export const trapRequestSchema = z.object({
   direction: vec2Schema.optional(),
   // Magnets: which group they pull.
   group: ballGroupSchema.optional(),
+  // Portals: where the other mouth is.
+  exit: vec2Schema.optional(),
 });
 export type TrapRequest = z.infer<typeof trapRequestSchema>;
 

@@ -128,6 +128,11 @@ export class AudioService {
       .filter((event) => event.kind === 'swallowed')
       .slice(0, MAX_DROPS_PER_FRAME)
       .forEach((_, index) => this.gulp(out, index * 0.06));
+
+    events
+      .filter((event) => event.kind === 'teleported')
+      .slice(0, MAX_DROPS_PER_FRAME)
+      .forEach((_, index) => this.zip(out, index * 0.06));
   }
 
   shotOutcome(outcome: ShotOutcome, celebrate: boolean): void {
@@ -215,6 +220,12 @@ export class AudioService {
   private gulp(out: GainNode, at: number): void {
     this.tone(out, { frequency: 320, slideTo: 40, type: 'sine', seconds: 0.35, gain: 0.5, at });
     this.burst(out, { frequency: 300, q: 0.5, seconds: 0.3, gain: 0.3, at });
+  }
+
+  // A portal flinging a ball across: a quick sweep up in pitch.
+  private zip(out: GainNode, at: number): void {
+    this.tone(out, { frequency: 240, slideTo: 960, type: 'sine', seconds: 0.16, gain: 0.4, at });
+    this.burst(out, { frequency: 1200, q: 0.8, seconds: 0.08, gain: 0.2, at });
   }
 
   // A thunk into the pocket followed by the ball rattling down the chute.

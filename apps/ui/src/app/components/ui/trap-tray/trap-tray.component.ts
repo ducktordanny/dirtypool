@@ -18,6 +18,7 @@ const TRAPS: readonly TrapInfo[] = [
   { kind: 'mud', name: 'Mud', description: 'Balls bog down in it' },
   { kind: 'ice', name: 'Ice', description: 'Balls slide, spin gets no grip' },
   { kind: 'plug', name: 'Plug', description: 'Drop it on a pocket to close it' },
+  { kind: 'portal', name: 'Portal', description: 'In one mouth, out the other' },
 ];
 
 // The pouch: pick a trap here, then tap the cloth to drop it. Picking again puts it back.

@@ -8,6 +8,7 @@ import {
   ICE_RADIUS,
   MUD_RADIUS,
   POCKETS,
+  PORTAL_RADIUS,
   TRAP_LIFETIME_SHOTS,
   WALL_HALF_LENGTH,
   WALL_RADIUS,
@@ -29,6 +30,8 @@ const WELL_SPIN_RAD_PER_MS = 0.0012;
 const HOLE_SPIN_RAD_PER_MS = -0.002;
 const FAN_CHEVRONS = 3;
 const FAN_SPEED_M_PER_MS = 0.00008;
+const PORTAL_SPIN_RAD_PER_MS = 0.003;
+const PORTAL_LINK_DASH = 0.02;
 const GHOST_ALPHA = 0.6;
 const DEFAULT_DIRECTION: Vec2 = { x: 1, y: 0 };
 
@@ -43,7 +46,11 @@ export function drawTraps(
 
   for (const trap of traps) {
     drawTrap(graphics, trap, viewport, now, 1);
-    drawLifeRing(graphics, trap, viewport);
+    drawLifeRing(graphics, trap, trap.position, viewport);
+
+    if (trap.exit !== undefined) {
+      drawLifeRing(graphics, trap, trap.exit, viewport);
+    }
   }
 }
 
@@ -58,11 +65,13 @@ export function drawTrapGhost(
   drawTrap(graphics, request, viewport, 0, GHOST_ALPHA);
 
   if (!allowed) {
-    const centre = toScreen(request.position, viewport);
+    for (const point of [request.position, ...(request.exit === undefined ? [] : [request.exit])]) {
+      const centre = toScreen(point, viewport);
 
-    graphics
-      .circle(centre.x, centre.y, (trapFootprint(request.kind) + BALL_RADIUS) * viewport.scale)
-      .stroke({ color: TABLE_COLORS.foul, width: 3, alpha: 0.9 });
+      graphics
+        .circle(centre.x, centre.y, (trapFootprint(request.kind) + BALL_RADIUS) * viewport.scale)
+        .stroke({ color: TABLE_COLORS.foul, width: 3, alpha: 0.9 });
+    }
   }
 }
 
@@ -131,6 +140,9 @@ function drawTrap(
       return;
     case 'plug':
       drawPlug(graphics, trap.position, viewport, alpha);
+      return;
+    case 'portal':
+      drawPortal(graphics, trap.position, trap.exit, viewport, now, alpha);
       return;
   }
 }
@@ -387,9 +399,61 @@ function drawPlug(graphics: Graphics, position: Vec2, viewport: Viewport, alpha:
     .stroke({ color: TRAP_COLORS.plugRim, width: 4, cap: 'round', alpha });
 }
 
+// Two dark mouths with a spinning rim, joined by a faint dashed line. While the player is still
+// picking the second mouth there is only the first.
+function drawPortal(
+  graphics: Graphics,
+  position: Vec2,
+  exit: Vec2 | undefined,
+  viewport: Viewport,
+  now: number,
+  alpha: number,
+): void {
+  if (exit !== undefined) {
+    const from = toScreen(position, viewport);
+    const to = toScreen(exit, viewport);
+    const span = Math.hypot(to.x - from.x, to.y - from.y);
+    const dash = PORTAL_LINK_DASH * viewport.scale;
+    const dashes = Math.floor(span / (dash * 2));
+
+    for (let index = 0; index < dashes; index += 1) {
+      const start = (index * 2 * dash) / span;
+      const end = ((index * 2 + 1) * dash) / span;
+
+      graphics
+        .moveTo(from.x + (to.x - from.x) * start, from.y + (to.y - from.y) * start)
+        .lineTo(from.x + (to.x - from.x) * end, from.y + (to.y - from.y) * end);
+    }
+
+    graphics.stroke({ color: TRAP_COLORS.portal, width: 1, alpha: 0.35 * alpha });
+  }
+
+  for (const mouth of [position, ...(exit === undefined ? [] : [exit])]) {
+    const centre = toScreen(mouth, viewport);
+    const radius = PORTAL_RADIUS * viewport.scale;
+    const spin = now * PORTAL_SPIN_RAD_PER_MS;
+
+    graphics
+      .circle(centre.x, centre.y, radius)
+      .fill({ color: TRAP_COLORS.portalCore, alpha: 0.9 * alpha })
+      .circle(centre.x, centre.y, radius)
+      .stroke({ color: TRAP_COLORS.portal, width: 2, alpha });
+
+    for (let arc = 0; arc < 3; arc += 1) {
+      const start = spin + (arc * Math.PI * 2) / 3;
+      const rim = radius * 0.6;
+
+      graphics
+        .moveTo(centre.x + Math.cos(start) * rim, centre.y + Math.sin(start) * rim)
+        .arc(centre.x, centre.y, rim, start, start + 1.2)
+        .stroke({ color: TRAP_COLORS.portal, width: 2, alpha: 0.7 * alpha });
+    }
+  }
+}
+
 // An arc in the owner's colour that shrinks as the trap runs out of shots.
-function drawLifeRing(graphics: Graphics, trap: Trap, viewport: Viewport): void {
-  const centre = toScreen(trap.position, viewport);
+function drawLifeRing(graphics: Graphics, trap: Trap, at: Vec2, viewport: Viewport): void {
+  const centre = toScreen(at, viewport);
   const radius = lifeRingRadius(trap.kind) * viewport.scale + 3;
   const start = -Math.PI / 2;
   const end = start + Math.PI * 2 * (trap.shotsLeft / TRAP_LIFETIME_SHOTS);
@@ -420,5 +484,7 @@ function lifeRingRadius(kind: TrapKind): number {
       return ICE_RADIUS * 0.3;
     case 'plug':
       return (POCKETS[0]?.radius ?? BALL_RADIUS) + 0.012;
+    case 'portal':
+      return PORTAL_RADIUS;
   }
 }

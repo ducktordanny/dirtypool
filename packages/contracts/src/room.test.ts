@@ -46,7 +46,8 @@ test('accepts a place-trap message for a known trap kind only', () => {
   assert.equal(place('wall'), true);
   assert.equal(place('hole'), true);
   assert.equal(place('plug'), true);
-  assert.equal(place('portal'), false);
+  assert.equal(place('portal'), true);
+  assert.equal(place('trampoline'), false);
   assert.equal(
     clientMessageSchema.safeParse({
       type: 'place-trap',

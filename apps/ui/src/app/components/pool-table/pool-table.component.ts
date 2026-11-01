@@ -26,7 +26,9 @@ import {
   BALL_RADIUS,
   TABLE_HEIGHT,
   TABLE_WIDTH,
+  canPlacePortalMouth,
   canPlaceTrap,
+  needsExit,
   placeBallInHand,
   snapTrapPosition,
 } from '@dirtypool/game';
@@ -127,6 +129,8 @@ export class PoolTable {
   private readonly direction = signal<Vec2 | null>(null);
   private readonly strike = signal<Strike | null>(null);
   private readonly hoverPoint = signal<Vec2 | null>(null);
+  // The first mouth of a portal being placed; the next tap, or the end of a drag, sets the other.
+  private readonly portalEntry = signal<Vec2 | null>(null);
   private readonly aim = computed(() => {
     if (this.interactive()) {
       const direction = this.direction();
@@ -260,8 +264,14 @@ export class PoolTable {
           return;
         }
 
-        drawTrapGhost(this.ghost, request, canPlaceTrap(table, request), viewport);
+        drawTrapGhost(this.ghost, request, this.allowed(table, request), viewport);
       });
+    });
+
+    effect(() => {
+      this.placingTrap();
+
+      untracked(() => this.portalEntry.set(null));
     });
 
     effect(() => {
@@ -425,7 +435,7 @@ export class PoolTable {
     const placing = this.placingTrap();
 
     if (placing !== null) {
-      this.dropTrap(placing, toWorld(event.global, this.viewport()));
+      this.pressTrap(placing, toWorld(event.global, this.viewport()));
       return;
     }
 
@@ -469,6 +479,14 @@ export class PoolTable {
   private onPointerUp(): void {
     this.aiming = false;
 
+    const placing = this.placingTrap();
+    const hover = this.hoverPoint();
+
+    if (placing !== null && this.portalEntry() !== null && hover !== null) {
+      this.dropTrap(placing, hover);
+      return;
+    }
+
     if (this.draggingCue()) {
       this.draggingCue.set(false);
       this.tintCueBall(true);
@@ -481,27 +499,48 @@ export class PoolTable {
     }
   }
 
-  // A tap on a blocked spot does nothing; the ghost already shows why.
-  private dropTrap(kind: TrapKind, position: Vec2): void {
-    const request = this.trapRequest(kind, position);
-
-    this.hoverPoint.set(null);
-
-    if (this.interactive() && canPlaceTrap(this.table(), request)) {
-      this.trapPlace.emit(request);
+  // A portal's first tap pins a mouth, and the second tap or the end of the drag drops the trap.
+  private pressTrap(kind: TrapKind, position: Vec2): void {
+    if (!needsExit(kind) || this.portalEntry() !== null) {
+      this.dropTrap(kind, position);
+    } else if (this.interactive() && canPlacePortalMouth(this.table(), position)) {
+      this.portalEntry.set(position);
     }
   }
 
-  // What dropping the picked trap here would ask for, with a plug already on its pocket.
+  // A tap on a blocked spot does nothing; the ghost already shows why. A portal keeps its first
+  // mouth until the second lands somewhere allowed.
+  private dropTrap(kind: TrapKind, position: Vec2): void {
+    const request = this.trapRequest(kind, position);
+
+    if (!this.interactive() || !canPlaceTrap(this.table(), request)) {
+      return;
+    }
+
+    this.hoverPoint.set(null);
+    this.portalEntry.set(null);
+    this.trapPlace.emit(request);
+  }
+
+  private allowed(table: TableState, request: TrapRequest): boolean {
+    return needsExit(request.kind) && request.exit === undefined
+      ? canPlacePortalMouth(table, request.position)
+      : canPlaceTrap(table, request);
+  }
+
+  // What dropping the picked trap here would ask for, with a plug already on its pocket and a
+  // portal's pinned mouth as its first.
   private trapRequest(kind: TrapKind, point: Vec2): TrapRequest {
     const direction = this.placingDirection();
     const group = this.placingGroup();
+    const entry = needsExit(kind) ? this.portalEntry() : null;
 
     return {
       kind,
-      position: snapTrapPosition(kind, point),
+      position: entry ?? snapTrapPosition(kind, point),
       ...(direction === null ? {} : { direction }),
       ...(group === null ? {} : { group }),
+      ...(entry === null ? {} : { exit: point }),
     };
   }
 

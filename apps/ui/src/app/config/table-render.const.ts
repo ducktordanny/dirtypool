@@ -66,6 +66,8 @@ export const TRAP_COLORS = {
   plugRim: 0x6b7280,
   magnetSolids: 0xffd34d,
   magnetStripes: 0xff5a5a,
+  portal: 0x22d3ee,
+  portalCore: 0x06202b,
 } as const;
 
 // Marks what belongs to whom on the table: player 1 gold, player 2 cyan.

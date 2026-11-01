@@ -79,6 +79,18 @@ describe('aim.util', () => {
     expect(soft?.path.length).toBeGreaterThan(5);
   });
 
+  it('carries the guide through a portal to its other mouth', () => {
+    const table: TableState = {
+      ...tableWith(ball(0, 0.5, 0.5)),
+      traps: [{ ...trap('portal', 0.8, 0.5), exit: { x: 1.6, y: 0.5 } }],
+    };
+    const aim = aimAlong(table, { x: 1, y: 0 }, { x: 0, y: 0 }, 0.3);
+
+    expect(aim?.ghost.x).toBeGreaterThan(1.6);
+    expect(aim?.path.some((point) => point.x > 0.6 && point.x < 0.75)).toBe(true);
+    expect(aim?.path.some((point) => point.x > 0.85 && point.x < 1.55)).toBe(false);
+  });
+
   it('returns null without a cue ball on the table', () => {
     expect(aimAlong(tableWith(ball(0, 0.5, 0.5, true)), { x: 1, y: 0 })).toBeNull();
   });

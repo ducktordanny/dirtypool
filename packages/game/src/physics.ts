@@ -20,6 +20,8 @@ import {
   MUD_FRICTION,
   MUD_RADIUS,
   POCKETS,
+  PORTAL_EXIT_OFFSET,
+  PORTAL_RADIUS,
   REST_SPEED,
   ROLLING_DECELERATION,
   SIDE_SPIN_GRIP,
@@ -57,7 +59,9 @@ export type TableEvent =
       readonly speed: number;
     }
   // A hole ate the ball; the rules treat it exactly like a pocketed one.
-  | { readonly kind: 'swallowed'; readonly trapId: number; readonly ballId: BallId };
+  | { readonly kind: 'swallowed'; readonly trapId: number; readonly ballId: BallId }
+  // A portal moved the ball to its other mouth.
+  | { readonly kind: 'teleported'; readonly trapId: number; readonly ballId: BallId };
 
 export interface StepResult {
   readonly table: TableState;
@@ -88,6 +92,7 @@ export function stepTable(table: TableState): StepResult {
   const plugged = pluggedPockets(table.traps);
 
   integrate(balls, table.traps, plugged);
+  teleport(balls, table.traps, events);
   resolveBallCollisions(balls, events);
   resolveBumpers(balls, table.traps, events);
   resolveWalls(balls, table.traps, events);
@@ -601,6 +606,50 @@ function pullIntoPockets(balls: MutableBall[], plugged: readonly boolean[]): voi
       }
     }
   }
+}
+
+// A moving ball whose centre enters either mouth of a portal carries on from the other mouth,
+// same velocity and spin, landing just outside it so the mouth does not take it straight back.
+// It runs before collisions and cushions so those tidy up the landing spot in the same step.
+function teleport(balls: MutableBall[], traps: readonly Trap[], events: TableEvent[]): void {
+  for (const trap of traps) {
+    if (trap.kind !== 'portal' || trap.exit === undefined) {
+      continue;
+    }
+
+    for (const ball of balls) {
+      if (ball.pocketed) {
+        continue;
+      }
+
+      const speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+
+      if (speed === 0) {
+        continue;
+      }
+
+      const other = inMouth(ball, trap.position)
+        ? trap.exit
+        : inMouth(ball, trap.exit)
+          ? trap.position
+          : null;
+
+      if (other === null) {
+        continue;
+      }
+
+      ball.x = other.x + (ball.vx / speed) * PORTAL_EXIT_OFFSET;
+      ball.y = other.y + (ball.vy / speed) * PORTAL_EXIT_OFFSET;
+      events.push({ kind: 'teleported', trapId: trap.id, ballId: ball.id });
+    }
+  }
+}
+
+function inMouth(ball: MutableBall, mouth: Vec2): boolean {
+  const dx = ball.x - mouth.x;
+  const dy = ball.y - mouth.y;
+
+  return dx * dx + dy * dy < PORTAL_RADIUS * PORTAL_RADIUS;
 }
 
 // A ball that reaches the middle of a hole is gone, parked at the hole like a pocketed one.

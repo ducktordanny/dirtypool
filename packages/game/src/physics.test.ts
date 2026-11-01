@@ -10,6 +10,7 @@ import {
   BUMPER_RADIUS,
   FIXED_STEP,
   POCKETS,
+  PORTAL_RADIUS,
   SPRING_MAX_EXIT,
   TABLE_HEIGHT,
   TABLE_WIDTH,
@@ -184,6 +185,30 @@ test('a hole swallows a slow ball that reaches its middle', () => {
   );
   assert.equal(table.balls[0]!.pocketed, true);
   assert.deepEqual(table.balls[0]!.position, hole.position);
+});
+
+test('a portal lets a ball out of its other mouth, both ways, still moving the same way', () => {
+  const portal: Trap = { ...trap(5, 'portal', 0.8, 0.5), exit: { x: 1.6, y: 0.5 } };
+  const forward = simulateShot(tableWith([ball(0, 0.5, 0.5, 0, 0)], [portal]), {
+    direction: { x: 1, y: 0 },
+    power: 0.15,
+  });
+
+  assert.deepEqual(
+    forward.events.find((event) => event.kind === 'teleported'),
+    { kind: 'teleported', trapId: 5, ballId: 0 },
+  );
+  assert.ok(forward.table.balls[0]!.position.x > 1.6 + PORTAL_RADIUS);
+  assert.ok(forward.table.balls[0]!.position.x < TABLE_WIDTH - BALL_RADIUS - 0.01);
+  assert.equal(forward.table.balls[0]!.pocketed, false);
+
+  const back = simulateShot(tableWith([ball(0, 1.9, 0.5, 0, 0)], [portal]), {
+    direction: { x: -1, y: 0 },
+    power: 0.15,
+  });
+
+  assert.ok(back.events.some((event) => event.kind === 'teleported'));
+  assert.ok(back.table.balls[0]!.position.x < 0.8 - PORTAL_RADIUS);
 });
 
 test('a bumper bounces a ball back and reports the hit', () => {
@@ -369,6 +394,7 @@ test('the same shot from the same table is bit-for-bit reproducible', () => {
       trap(5, 'spring', 1.9, 0.9),
       { ...trap(6, 'magnet', 0.4, 0.3), group: 'stripes' },
       trap(7, 'plug', POCKETS[2]!.position.x, POCKETS[2]!.position.y),
+      { ...trap(8, 'portal', 1.6, 0.3), exit: { x: 0.3, y: 0.6 } },
     ],
   };
 
