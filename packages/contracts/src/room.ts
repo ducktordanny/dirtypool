@@ -48,8 +48,13 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('aim'), aim: aimSchema }),
   // Ball in hand: where the cue ball should sit before the shot.
   z.object({ type: z.literal('place-cue'), position: vec2Schema }),
-  // Drop a trap from the pouch before shooting.
-  z.object({ type: z.literal('place-trap'), kind: trapKindSchema, position: vec2Schema }),
+  // Drop a trap from the pouch before shooting; walls also say which way they run.
+  z.object({
+    type: z.literal('place-trap'),
+    kind: trapKindSchema,
+    position: vec2Schema,
+    direction: vec2Schema.optional(),
+  }),
   z.object({ type: z.literal('shoot'), shot: shotSchema }),
   // Rack a fresh game once the current one is over.
   z.object({ type: z.literal('restart') }),

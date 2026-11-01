@@ -52,6 +52,10 @@ export const TRAP_COLORS = {
   bumperCap: 0xf4f1ea,
   well: 0x1b0f3a,
   wellSwirl: 0xa78bfa,
+  wall: 0x2a2f3a,
+  wallEdge: 0x5c6472,
+  hole: 0x120606,
+  holeGlow: 0xff7a2f,
 } as const;
 
 // Marks what belongs to whom on the table: player 1 gold, player 2 cyan.

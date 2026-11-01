@@ -74,12 +74,12 @@ export class GameService {
     this.tableState.set(table ?? game.table);
   }
 
-  placeTrap({ kind, position }: TrapDrop): void {
+  placeTrap({ kind, position, direction }: TrapDrop): void {
     if (!this.canShoot()) {
       return;
     }
 
-    const result = placeTrap(this.gameState(), kind, position);
+    const result = placeTrap(this.gameState(), kind, position, direction);
 
     if (result.kind === 'placed') {
       this.gameState.set(result.game);

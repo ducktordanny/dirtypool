@@ -222,12 +222,18 @@ export class RoomStore {
   }
 
   // Traps go down on your own turn only; the game package checks the pouch and the spot.
-  placeTrap(room: Room, player: RoomPlayer, kind: TrapKind, position: Vec2): PlaceTrapResult {
+  placeTrap(
+    room: Room,
+    player: RoomPlayer,
+    kind: TrapKind,
+    position: Vec2,
+    direction?: Vec2,
+  ): PlaceTrapResult {
     if (room.players.length < 2 || room.game.currentPlayer !== player.index) {
       return 'not-your-turn';
     }
 
-    const result = placeTrap(room.game, kind, position);
+    const result = placeTrap(room.game, kind, position, direction);
 
     if (result.kind === 'placed') {
       room.game = result.game;

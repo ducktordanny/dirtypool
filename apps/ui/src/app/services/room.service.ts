@@ -189,9 +189,13 @@ export class RoomService {
   }
 
   // The server checks the pouch and the spot; its broadcast puts the trap on both tables.
-  placeTrap({ kind, position }: TrapDrop): void {
+  placeTrap({ kind, position, direction }: TrapDrop): void {
     if (this.canShoot()) {
-      this.send({ type: 'place-trap', kind, position });
+      this.send(
+        direction === undefined
+          ? { type: 'place-trap', kind, position }
+          : { type: 'place-trap', kind, position, direction },
+      );
     }
   }
 

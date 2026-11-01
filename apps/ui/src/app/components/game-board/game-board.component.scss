@@ -6,8 +6,11 @@ $breakpoint: 640px;
   gap: var(--space-3);
 }
 
+// Controls, table and chute share a row; the pouch sits in the table's column underneath so it
+// is centred on the table, not on the whole row.
 .arena {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: stretch;
   gap: var(--space-3);
 }
@@ -25,20 +28,41 @@ $breakpoint: 640px;
 
 .stage {
   position: relative;
-  flex: 1;
   min-width: 0;
+}
+
+.pouch {
+  grid-column: 2;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 @media (max-width: $breakpoint) {
   .arena {
-    flex-direction: column-reverse;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  dp-ball-tray {
+    grid-row: 1;
+  }
+
+  .stage {
+    grid-row: 2;
   }
 
   .controls {
+    grid-row: 3;
     flex-direction: row;
   }
 
   .controls dp-power-slider {
     width: auto;
+  }
+
+  .pouch {
+    grid-column: 1;
+    grid-row: 4;
   }
 }

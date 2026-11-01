@@ -43,5 +43,7 @@ test('accepts a place-trap message for a known trap kind only', () => {
 
   assert.equal(place('bumper'), true);
   assert.equal(place('well'), true);
+  assert.equal(place('wall'), true);
+  assert.equal(place('hole'), true);
   assert.equal(place('portal'), false);
 });

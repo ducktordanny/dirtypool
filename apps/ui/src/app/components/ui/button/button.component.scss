@@ -10,6 +10,7 @@
   color: var(--color-text);
   font: inherit;
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
 
   &:hover:not(:disabled) {

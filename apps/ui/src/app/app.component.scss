@@ -12,6 +12,12 @@
   border-bottom: 1px solid var(--color-border);
 }
 
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .title {
   color: var(--color-text);
   font-size: 1.25rem;

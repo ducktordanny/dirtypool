@@ -7,11 +7,6 @@
       (release)="pool.fire($event)"
     />
     <dp-spin-control [(spin)]="spin" [disabled]="!interactive()" />
-    <dp-trap-tray
-      [(selected)]="placingTrap"
-      [trapsLeft]="trapsLeft()"
-      [disabled]="!canPlaceTrap()"
-    />
   </div>
   <div class="stage">
     <dp-pool-table
@@ -25,6 +20,7 @@
       [legalTargets]="legalTargets()"
       [ballInHand]="ballInHand()"
       [placingTrap]="placingTrap()"
+      [placingDirection]="placingDirection()"
       (shot)="onShot($event)"
       (trapPlace)="onTrapPlace($event)"
       (aimChange)="aim.emit($event)"
@@ -43,4 +39,16 @@
     }
   </div>
   <dp-ball-tray [balls]="game().pocketedBalls" />
+  <div class="pouch">
+    <dp-trap-tray
+      [(selected)]="placingTrap"
+      [trapsLeft]="trapsLeft()"
+      [disabled]="!canPlaceTrap()"
+      (rotate)="rotateWall()"
+    />
+    <dp-help-tip>
+      Pick a trap from the pouch and tap the cloth to drop it. Drag on the table to aim, tap the cue
+      ball for spin, pull the power bar and let go to shoot.
+    </dp-help-tip>
+  </div>
 </div>

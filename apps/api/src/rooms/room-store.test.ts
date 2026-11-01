@@ -151,6 +151,7 @@ test('a trap goes down on your own turn only, once per shot, and ages with the s
   assert.equal(store.placeTrap(room, host, 'bumper', { x: 0.03, y: 0.3 }), 'blocked');
   assert.equal(store.placeTrap(room, host, 'bumper', { x: 0.5, y: 0.3 }), 'placed');
   assert.equal(store.placeTrap(room, host, 'well', { x: 1, y: 0.8 }), 'already-placed');
+  assert.equal(store.placeTrap(room, host, 'wall', { x: 1, y: 0.8 }), 'already-placed');
   assert.equal(room.game.players[0].trapsLeft, 3);
   assert.equal(room.game.table.traps.length, 1);
 
@@ -158,6 +159,12 @@ test('a trap goes down on your own turn only, once per shot, and ages with the s
 
   assert.equal(room.game.table.traps[0]?.shotsLeft, 2);
   assert.equal(room.game.trapPlaced, false);
+
+  room.game = { ...room.game, currentPlayer: 0 };
+
+  assert.equal(store.placeTrap(room, host, 'wall', { x: 1, y: 0.8 }), 'blocked');
+  assert.equal(store.placeTrap(room, host, 'wall', { x: 1, y: 0.8 }, { x: 0, y: 1 }), 'placed');
+  assert.deepEqual(room.game.table.traps[1]?.direction, { x: 0, y: 1 });
 });
 
 test('private rooms stay out of the open list but can still be joined by code', () => {

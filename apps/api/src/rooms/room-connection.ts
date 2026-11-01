@@ -76,7 +76,7 @@ export class RoomConnection {
         this.placeCue(message.position);
         return;
       case 'place-trap':
-        this.placeTrap(message.kind, message.position);
+        this.placeTrap(message.kind, message.position, message.direction);
         return;
       case 'shoot':
         this.shoot(message.shot);
@@ -171,14 +171,14 @@ export class RoomConnection {
     this.rooms.broadcast(room, { type: 'cue-placed', position });
   }
 
-  private placeTrap(kind: TrapKind, position: Vec2): void {
+  private placeTrap(kind: TrapKind, position: Vec2, direction?: Vec2): void {
     if (this.membership === null) {
       this.send({ type: 'error', message: 'Join a room first' });
       return;
     }
 
     const { room, player } = this.membership;
-    const result = this.rooms.placeTrap(room, player, kind, position);
+    const result = this.rooms.placeTrap(room, player, kind, position, direction);
 
     if (result !== 'placed') {
       this.send({ type: 'error', message: TRAP_ERRORS[result] });

@@ -67,28 +67,29 @@
           <dp-button variant="primary" (click)="copyLink()">
             {{ copied() ? 'Copied' : 'Copy link' }}
           </dp-button>
-          <dp-button (click)="leave()">Leave</dp-button>
         </dp-board-notice>
+      } @else if (room.playerCount() < 2) {
+        <dp-board-notice
+          boardOverlay
+          title="Waiting for an opponent"
+          text="Send a friend the link, or tell them the room code."
+        >
+          <span class="share__code">{{ room.code() }}</span>
+          <dp-button variant="primary" (click)="copyLink()">
+            {{ copied() ? 'Copied' : 'Copy link' }}
+          </dp-button>
+        </dp-board-notice>
+      }
+      @if (toast(); as error) {
+        <p boardOverlay class="toast" role="alert">{{ error }}</p>
       }
     </dp-game-board>
   }
-  <div class="footer">
-    <div class="footer__status">
-      <span class="status">{{ status() }}</span>
-      @if (room.playerCount() < 2) {
-        <span class="share">
-          Room code <strong class="share__code">{{ room.code() }}</strong>
-          <dp-button (click)="copyLink()">{{ copied() ? 'Copied' : 'Copy link' }}</dp-button>
-        </span>
-      }
-      @if (room.error(); as error) {
-        <span class="error" role="alert">{{ error }}</span>
-      }
-    </div>
-    <dp-button (click)="leave()">Leave</dp-button>
-  </div>
 } @else {
   <section class="notice">
     <h2 class="notice__title">Joining room {{ code() }}…</h2>
   </section>
 }
+<ng-template dpHeaderActions>
+  <dp-button (click)="leave()">Leave</dp-button>
+</ng-template>

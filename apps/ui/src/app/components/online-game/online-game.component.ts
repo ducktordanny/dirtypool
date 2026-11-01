@@ -1,6 +1,7 @@
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { Router } from '@angular/router';
 import { PLAYER_NAME_MAX_LENGTH, type Shot } from '@dirtypool/contracts';
+import { HeaderActions } from '../../directives/header-actions.directive';
 import { NicknameService } from '../../services/nickname.service';
 import { RoomService } from '../../services/room.service';
 import { GameBoard } from '../game-board/game-board.component';
@@ -8,9 +9,11 @@ import type { PlayerNames } from '../match-hud/match-hud.component';
 import { BoardNotice, Button } from '../ui';
 
 const COPIED_FOR_MS = 1500;
+// Server errors show on the table for a moment, then get out of the way.
+const ERROR_FOR_MS = 4000;
 
 @Component({
-  imports: [BoardNotice, Button, GameBoard],
+  imports: [BoardNotice, Button, GameBoard, HeaderActions],
   selector: 'dp-online-game',
   styleUrl: './online-game.component.scss',
   templateUrl: './online-game.component.html',
@@ -24,6 +27,7 @@ export class OnlineGame {
   protected readonly nameMaxLength = PLAYER_NAME_MAX_LENGTH;
   protected readonly joinError = signal<string | null>(null);
   protected readonly copied = signal(false);
+  protected readonly toast = signal<string | null>(null);
   // A guest arriving by link may not have picked a name yet; ask before joining.
   protected readonly needsName = computed(
     () => this.room.code() !== this.code() && !this.nickname.valid(),
@@ -48,40 +52,9 @@ export class OnlineGame {
       game.lastOutcome !== null
     );
   });
-  protected readonly status = computed(() => {
-    const game = this.room.game();
-    const opponent = this.opponentName();
-
-    if (game === null) {
-      return 'Connecting…';
-    }
-
-    if (this.reconnecting()) {
-      return 'Reconnecting…';
-    }
-
-    if (this.opponentAway()) {
-      return `${opponent} is reconnecting…`;
-    }
-
-    if (opponent === null) {
-      const departed = this.room.lastOpponentName();
-
-      return departed === null || game.lastOutcome === null
-        ? 'Waiting for an opponent'
-        : `${departed} left the game`;
-    }
-
-    if (game.phase === 'finished') {
-      return game.winner === this.room.playerIndex() ? 'You win!' : `${opponent} wins.`;
-    }
-
-    // While a shot rolls the state still names the shooter, so this stays right mid-animation.
-    return game.currentPlayer === this.room.playerIndex() ? 'Your turn' : `${opponent}'s turn`;
-  });
-
   private readonly router = inject(Router);
   private readonly joinedWith = signal<string | null>(null);
+  private toastTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor() {
     effect(() => {
@@ -92,6 +65,16 @@ export class OnlineGame {
         if (ready && this.joinedWith() !== code) {
           this.join(code);
         }
+      });
+    });
+
+    effect(() => {
+      const error = this.room.error();
+
+      untracked(() => {
+        this.toast.set(error);
+        clearTimeout(this.toastTimer);
+        this.toastTimer = setTimeout(() => this.toast.set(null), ERROR_FOR_MS);
       });
     });
   }

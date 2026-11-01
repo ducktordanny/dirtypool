@@ -1,6 +1,7 @@
 export { BallIcon } from './ball-icon/ball-icon.component';
 export { BoardNotice } from './board-notice/board-notice.component';
 export { Button } from './button/button.component';
+export { HelpTip } from './help-tip/help-tip.component';
 export { MatchResult } from './match-result/match-result.component';
 export { OutcomeBanner } from './outcome-banner/outcome-banner.component';
 export { PowerSlider } from './power-slider/power-slider.component';

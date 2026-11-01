@@ -20,8 +20,9 @@ export type Ball = z.infer<typeof ballSchema>;
 export const playerIndexSchema = z.union([z.literal(0), z.literal(1)]);
 export type PlayerIndex = z.infer<typeof playerIndexSchema>;
 
-// Bumpers bounce balls away; wells pull passing balls towards their centre.
-export const trapKindSchema = z.enum(['bumper', 'well']);
+// Bumpers bounce balls away, walls block them, wells pull passing balls towards their centre and
+// holes do the same but swallow whatever reaches the middle, which counts as pocketed.
+export const trapKindSchema = z.enum(['bumper', 'well', 'wall', 'hole']);
 export type TrapKind = z.infer<typeof trapKindSchema>;
 
 export const trapSchema = z.object({
@@ -30,6 +31,8 @@ export const trapSchema = z.object({
   kind: trapKindSchema,
   owner: playerIndexSchema,
   position: vec2Schema,
+  // Walls only: the unit vector the wall runs along.
+  direction: vec2Schema.optional(),
   // The trap disappears once this many more shots have been taken.
   shotsLeft: z.number().int().min(1),
 });

@@ -77,6 +77,19 @@ export const WELL_RADIUS = 0.2;
 export const WELL_CORE = 0.05;
 export const WELL_PULL = 2.5;
 export const WELL_DRAG = 2;
+// A hole pulls like a well and swallows any ball whose centre gets this close.
+export const HOLE_RADIUS = 0.035;
+// A wall is a rubber capsule: this long from the centre to each end, and this thick.
+export const WALL_HALF_LENGTH = 0.08;
+export const WALL_RADIUS = 0.008;
+// The directions a wall can run, fixed so neither side ever needs trigonometry.
+const SQRT_HALF = 0.7071067811865476;
+export const WALL_DIRECTIONS: readonly Vec2[] = [
+  { x: 1, y: 0 },
+  { x: SQRT_HALF, y: SQRT_HALF },
+  { x: 0, y: 1 },
+  { x: -SQRT_HALF, y: SQRT_HALF },
+];
 // Placement keeps this much cloth between a trap's footprint and anything else.
 export const TRAP_CLEARANCE = 0.01;
 export const TRAPS_PER_PLAYER = 4;

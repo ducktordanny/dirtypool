@@ -208,6 +208,24 @@ test('traps need clear cloth away from balls, pockets and each other', () => {
     'blocked',
   );
   assert.equal(placeBallInHand(placed, { x: 0.52, y: 0.3 }), null);
+
+  // A wall needs a direction and is checked along its whole length.
+  assert.equal(canPlaceTrap(table, 'wall', { x: 1, y: 0.3 }), false);
+  assert.equal(canPlaceTrap(table, 'wall', { x: 1, y: 0.3 }, { x: 1, y: 0 }), true);
+  assert.equal(canPlaceTrap(placed, 'wall', { x: 0.57, y: 0.3 }, { x: 1, y: 0 }), false);
+  assert.equal(canPlaceTrap(placed, 'wall', { x: 0.57, y: 0.3 }, { x: 0, y: 1 }), true);
+  assert.equal(placeBallInHand({ ...table, traps: [wall(1, 1, 0.3)] }, { x: 1.07, y: 0.3 }), null);
+});
+
+test('a ball swallowed by a hole counts as pocketed', () => {
+  const game = withGroups(createGame(), 'solids');
+  const next = resolveShot(game, withPocketed(game.table, [0]), [
+    contact(1),
+    { kind: 'swallowed', trapId: 0, ballId: 0 },
+  ]);
+
+  assert.equal(next.lastOutcome, 'scratch');
+  assert.equal(next.ballInHand, true);
 });
 
 test('traps age with every shot and timeout, then disappear', () => {
@@ -268,6 +286,10 @@ function withPocketed(table: TableState, ids: readonly number[]): TableState {
 
 function bumper(id: number, x: number, y: number): Trap {
   return { id, kind: 'bumper', owner: 0, position: { x, y }, shotsLeft: TRAP_LIFETIME_SHOTS };
+}
+
+function wall(id: number, x: number, y: number): Trap {
+  return { ...bumper(id, x, y), kind: 'wall', direction: { x: 1, y: 0 } };
 }
 
 function contact(ballId: number): TableEvent {

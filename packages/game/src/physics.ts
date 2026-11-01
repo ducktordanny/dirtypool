@@ -8,6 +8,7 @@ import {
   CUE_BALL_ID,
   CUSHION_RESTITUTION,
   FIXED_STEP,
+  HOLE_RADIUS,
   LIP_OVERLAP,
   LIP_PULL,
   POCKETS,
@@ -18,6 +19,8 @@ import {
   SPIN_DECAY,
   TABLE_HEIGHT,
   TABLE_WIDTH,
+  WALL_HALF_LENGTH,
+  WALL_RADIUS,
   WELL_CORE,
   WELL_DRAG,
   WELL_PULL,
@@ -42,7 +45,9 @@ export type TableEvent =
       readonly trapId: number;
       readonly ballId: BallId;
       readonly speed: number;
-    };
+    }
+  // A hole ate the ball; the rules treat it exactly like a pocketed one.
+  | { readonly kind: 'swallowed'; readonly trapId: number; readonly ballId: BallId };
 
 export interface StepResult {
   readonly table: TableState;
@@ -74,9 +79,11 @@ export function stepTable(table: TableState): StepResult {
   integrate(balls, table.traps);
   resolveBallCollisions(balls, events);
   resolveBumpers(balls, table.traps, events);
+  resolveWalls(balls, table.traps, events);
   resolveCushions(balls, events);
   pullIntoPockets(balls);
   capturePockets(balls, events);
+  swallow(balls, table.traps, events);
 
   return { table: { balls: balls.map(toBall), traps: table.traps }, events };
 }
@@ -213,7 +220,7 @@ function wellPull(ball: MutableBall, traps: readonly Trap[]): WellPull {
   const result: WellPull = { x: 0, y: 0, strength: 0, damping: 1 };
 
   for (const trap of traps) {
-    if (trap.kind !== 'well') {
+    if (trap.kind !== 'well' && trap.kind !== 'hole') {
       continue;
     }
 
@@ -275,6 +282,55 @@ function resolveBumpers(balls: MutableBall[], traps: readonly Trap[], events: Ta
       ball.vx += (1 + BUMPER_RESTITUTION) * inbound * nx;
       ball.vy += (1 + BUMPER_RESTITUTION) * inbound * ny;
       events.push({ kind: 'bumper', trapId: trap.id, ballId: ball.id, speed: inbound });
+    }
+  }
+}
+
+// A wall is a rubber capsule: the ball is pushed off the nearest point of its centre line and
+// bounces like it would off a cushion, so it also sounds like one.
+function resolveWalls(balls: MutableBall[], traps: readonly Trap[], events: TableEvent[]): void {
+  const reach = BALL_RADIUS + WALL_RADIUS;
+
+  for (const trap of traps) {
+    if (trap.kind !== 'wall' || trap.direction === undefined) {
+      continue;
+    }
+
+    const along = trap.direction;
+
+    for (const ball of balls) {
+      if (ball.pocketed) {
+        continue;
+      }
+
+      const offset = (ball.x - trap.position.x) * along.x + (ball.y - trap.position.y) * along.y;
+      const t = Math.max(-WALL_HALF_LENGTH, Math.min(WALL_HALF_LENGTH, offset));
+      const nearestX = trap.position.x + along.x * t;
+      const nearestY = trap.position.y + along.y * t;
+      const dx = ball.x - nearestX;
+      const dy = ball.y - nearestY;
+      const distanceSquared = dx * dx + dy * dy;
+
+      if (distanceSquared >= reach * reach || distanceSquared === 0) {
+        continue;
+      }
+
+      const distance = Math.sqrt(distanceSquared);
+      const nx = dx / distance;
+      const ny = dy / distance;
+
+      ball.x = nearestX + nx * reach;
+      ball.y = nearestY + ny * reach;
+
+      const inbound = -(ball.vx * nx + ball.vy * ny);
+
+      if (inbound <= 0) {
+        continue;
+      }
+
+      ball.vx += (1 + CUSHION_RESTITUTION) * inbound * nx;
+      ball.vy += (1 + CUSHION_RESTITUTION) * inbound * ny;
+      events.push({ kind: 'cushion', ballId: ball.id, speed: inbound });
     }
   }
 }
@@ -432,6 +488,35 @@ function pullIntoPockets(balls: MutableBall[]): void {
       if (distance > 0 && distance < pocket.radius + pocket.mouth) {
         ball.vx += (dx / distance) * LIP_PULL * FIXED_STEP;
         ball.vy += (dy / distance) * LIP_PULL * FIXED_STEP;
+      }
+    }
+  }
+}
+
+// A ball that reaches the middle of a hole is gone, parked at the hole like a pocketed one.
+function swallow(balls: MutableBall[], traps: readonly Trap[], events: TableEvent[]): void {
+  for (const trap of traps) {
+    if (trap.kind !== 'hole') {
+      continue;
+    }
+
+    for (const ball of balls) {
+      if (ball.pocketed) {
+        continue;
+      }
+
+      const dx = ball.x - trap.position.x;
+      const dy = ball.y - trap.position.y;
+
+      if (dx * dx + dy * dy < HOLE_RADIUS * HOLE_RADIUS) {
+        ball.pocketed = true;
+        ball.sx = 0;
+        ball.sy = 0;
+        ball.x = trap.position.x;
+        ball.y = trap.position.y;
+        ball.vx = 0;
+        ball.vy = 0;
+        events.push({ kind: 'swallowed', trapId: trap.id, ballId: ball.id });
       }
     }
   }

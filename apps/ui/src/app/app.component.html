@@ -1,6 +1,11 @@
 <header class="header">
   <a class="title" routerLink="/">Dirty Pool</a>
-  <dp-sound-toggle [muted]="audio.muted()" (toggled)="audio.toggleMuted()" />
+  <div class="actions">
+    @if (headerActions.template(); as actions) {
+      <ng-container [ngTemplateOutlet]="actions" />
+    }
+    <dp-sound-toggle [muted]="audio.muted()" (toggled)="audio.toggleMuted()" />
+  </div>
 </header>
 <main class="main">
   <router-outlet />

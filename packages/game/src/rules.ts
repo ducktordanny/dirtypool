@@ -63,7 +63,7 @@ export function resolveShot(
   const shooter = game.currentPlayer;
   const breaking = game.lastOutcome === null;
   const pocketedIds = events
-    .filter((event) => event.kind === 'pocketed')
+    .filter((event) => event.kind === 'pocketed' || event.kind === 'swallowed')
     .map((event) => event.ballId);
   const scratched = pocketedIds.includes(CUE_BALL_ID);
   const firstContact = events.find((event) => event.kind === 'cue-contact')?.ballId ?? null;

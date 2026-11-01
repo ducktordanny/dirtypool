@@ -7,24 +7,42 @@ import {
   TABLE_WIDTH,
   TRAP_CLEARANCE,
   TRAP_LIFETIME_SHOTS,
+  WALL_HALF_LENGTH,
+  WALL_RADIUS,
 } from './table.const.js';
+import { normalize } from './vec2.util.js';
 
-// Solid part of a trap for placement: a well is a field, only its core needs clear cloth.
-const FOOTPRINT: Readonly<Record<TrapKind, number>> = {
+// Solid part of a round trap for placement: a well or hole is a field, only its core needs
+// clear cloth.
+const DISC_FOOTPRINT: Readonly<Record<Exclude<TrapKind, 'wall'>, number>> = {
   bumper: BUMPER_RADIUS,
   well: BALL_RADIUS,
+  hole: BALL_RADIUS,
 };
+// A wall is checked at this many points along its length.
+const WALL_SAMPLES = 5;
+
+interface Footprint {
+  readonly point: Vec2;
+  readonly radius: number;
+}
 
 export type TrapPlacement =
   | { readonly kind: 'placed'; readonly game: GameState }
   | { readonly kind: 'not-aiming' | 'no-traps-left' | 'already-placed' | 'blocked' };
 
+// Radius of the disc a trap needs clear around its centre, for marking a blocked drop.
 export function trapFootprint(kind: TrapKind): number {
-  return FOOTPRINT[kind];
+  return kind === 'wall' ? WALL_HALF_LENGTH + WALL_RADIUS : DISC_FOOTPRINT[kind];
 }
 
 // The player on turn drops one trap from their pouch before shooting.
-export function placeTrap(game: GameState, kind: TrapKind, position: Vec2): TrapPlacement {
+export function placeTrap(
+  game: GameState,
+  kind: TrapKind,
+  position: Vec2,
+  direction?: Vec2,
+): TrapPlacement {
   if (game.phase !== 'aiming') {
     return { kind: 'not-aiming' };
   }
@@ -40,7 +58,9 @@ export function placeTrap(game: GameState, kind: TrapKind, position: Vec2): Trap
     return { kind: 'already-placed' };
   }
 
-  if (!canPlaceTrap(game.table, kind, position)) {
+  const along = wallDirection(kind, direction);
+
+  if (!canPlaceTrap(game.table, kind, position, along)) {
     return { kind: 'blocked' };
   }
 
@@ -49,6 +69,7 @@ export function placeTrap(game: GameState, kind: TrapKind, position: Vec2): Trap
     kind,
     owner: shooter,
     position,
+    ...(along === undefined ? {} : { direction: along }),
     shotsLeft: TRAP_LIFETIME_SHOTS,
   };
   const players: GameState['players'] = [
@@ -67,32 +88,46 @@ export function placeTrap(game: GameState, kind: TrapKind, position: Vec2): Trap
   };
 }
 
-// On the cloth and clear of balls, pocket mouths and other traps.
-export function canPlaceTrap(table: TableState, kind: TrapKind, position: Vec2): boolean {
-  const footprint = FOOTPRINT[kind];
-  const inside =
-    position.x >= footprint &&
-    position.x <= TABLE_WIDTH - footprint &&
-    position.y >= footprint &&
-    position.y <= TABLE_HEIGHT - footprint;
-  const clearOfBalls = table.balls.every(
-    (ball) => ball.pocketed || !within(ball.position, position, footprint + BALL_RADIUS),
-  );
-  const clearOfPockets = POCKETS.every(
-    (pocket) =>
-      !within(pocket.position, position, footprint + pocket.radius + pocket.mouth + BALL_RADIUS),
-  );
-  const clearOfTraps = table.traps.every(
-    (trap) => !within(trap.position, position, footprint + FOOTPRINT[trap.kind]),
+// On the cloth and clear of balls, pocket mouths and other traps. A wall needs a direction.
+export function canPlaceTrap(
+  table: TableState,
+  kind: TrapKind,
+  position: Vec2,
+  direction?: Vec2,
+): boolean {
+  const along = wallDirection(kind, direction);
+
+  if (kind === 'wall' && along === undefined) {
+    return false;
+  }
+
+  const existing = table.traps.flatMap((trap) =>
+    footprint(trap.kind, trap.position, trap.direction),
   );
 
-  return inside && clearOfBalls && clearOfPockets && clearOfTraps;
+  return footprint(kind, position, along).every(
+    ({ point, radius }) =>
+      point.x >= radius &&
+      point.x <= TABLE_WIDTH - radius &&
+      point.y >= radius &&
+      point.y <= TABLE_HEIGHT - radius &&
+      table.balls.every(
+        (ball) => ball.pocketed || !within(ball.position, point, radius + BALL_RADIUS),
+      ) &&
+      POCKETS.every(
+        (pocket) =>
+          !within(pocket.position, point, radius + pocket.radius + pocket.mouth + BALL_RADIUS),
+      ) &&
+      existing.every((other) => !within(other.point, point, radius + other.radius)),
+  );
 }
 
 // Ball in hand and spotting must avoid trap footprints too.
 export function clearOfTraps(table: TableState, position: Vec2): boolean {
-  return table.traps.every(
-    (trap) => !within(trap.position, position, FOOTPRINT[trap.kind] + BALL_RADIUS),
+  return table.traps.every((trap) =>
+    footprint(trap.kind, trap.position, trap.direction).every(
+      ({ point, radius }) => !within(point, position, radius + BALL_RADIUS),
+    ),
   );
 }
 
@@ -108,6 +143,33 @@ export function ageTraps(table: TableState): TableState {
       .filter((trap) => trap.shotsLeft > 1)
       .map((trap) => ({ ...trap, shotsLeft: trap.shotsLeft - 1 })),
   };
+}
+
+function wallDirection(kind: TrapKind, direction: Vec2 | undefined): Vec2 | undefined {
+  if (kind !== 'wall' || direction === undefined) {
+    return undefined;
+  }
+
+  const unit = normalize(direction);
+
+  return unit.x === 0 && unit.y === 0 ? undefined : unit;
+}
+
+function footprint(kind: TrapKind, position: Vec2, direction: Vec2 | undefined): Footprint[] {
+  if (kind !== 'wall') {
+    return [{ point: position, radius: DISC_FOOTPRINT[kind] }];
+  }
+
+  const along = direction ?? { x: 1, y: 0 };
+
+  return Array.from({ length: WALL_SAMPLES }, (_, index) => {
+    const offset = (index / (WALL_SAMPLES - 1) - 0.5) * 2 * WALL_HALF_LENGTH;
+
+    return {
+      point: { x: position.x + along.x * offset, y: position.y + along.y * offset },
+      radius: WALL_RADIUS,
+    };
+  });
 }
 
 function within(a: Vec2, b: Vec2, reach: number): boolean {

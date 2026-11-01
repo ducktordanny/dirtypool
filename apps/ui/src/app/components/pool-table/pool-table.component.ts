@@ -53,7 +53,7 @@ import {
 import { type CueLine, drawAimGuide, drawCue } from './cue.util';
 import { foulTargetPosition } from './foul-target.util';
 import { type PocketBurst, drawPocketBursts, startPocketBurst } from './pocket-burst.util';
-import { drawTableSurface, nearestPocketVisual } from './table-surface.util';
+import { drawTableSurface } from './table-surface.util';
 import { drawTrapGhost, drawTraps } from './trap.util';
 
 // The cue while it strikes: fixed to where the cue ball was, so it never follows the ball.
@@ -96,6 +96,8 @@ export class PoolTable {
   readonly ballInHand = input(false);
   // The trap picked from the pouch: the next tap on the cloth drops it instead of aiming.
   readonly placingTrap = input<TrapKind | null>(null);
+  // Which way a wall being placed runs.
+  readonly placingDirection = input<Vec2 | null>(null);
   readonly shot = output<Shot>();
   readonly trapPlace = output<TrapDrop>();
   // Fires while this player aims, so the opponent can watch the cue.
@@ -229,6 +231,7 @@ export class PoolTable {
       const app = this.app();
       const viewport = this.viewport();
       const placing = this.placingTrap();
+      const direction = this.placingDirection() ?? undefined;
       const hover = this.hoverPoint();
       const table = this.table();
 
@@ -242,7 +245,14 @@ export class PoolTable {
           return;
         }
 
-        drawTrapGhost(this.ghost, placing, hover, canPlaceTrap(table, placing, hover), viewport);
+        drawTrapGhost(
+          this.ghost,
+          placing,
+          hover,
+          direction,
+          canPlaceTrap(table, placing, hover, direction),
+          viewport,
+        );
       });
     });
 
@@ -465,10 +475,14 @@ export class PoolTable {
 
   // A tap on a blocked spot does nothing; the ghost already shows why.
   private dropTrap(kind: TrapKind, position: Vec2): void {
+    const direction = this.placingDirection() ?? undefined;
+
     this.hoverPoint.set(null);
 
-    if (this.interactive() && canPlaceTrap(this.table(), kind, position)) {
-      this.trapPlace.emit({ kind, position });
+    if (this.interactive() && canPlaceTrap(this.table(), kind, position, direction)) {
+      this.trapPlace.emit(
+        direction === undefined ? { kind, position } : { kind, position, direction },
+      );
     }
   }
 
@@ -530,12 +544,10 @@ export class PoolTable {
       }
 
       if (ball.pocketed) {
+        // The simulation parks a captured ball on the pocket or hole that took it.
         if (!sprite.pocketed) {
-          const from = sprite.lastPosition ?? ball.position;
-          const pocket = nearestPocketVisual(from).centre;
-
-          startSink(sprite, pocket, performance.now());
-          this.activeBursts.push(startPocketBurst(ball.id, pocket, performance.now()));
+          startSink(sprite, ball.position, performance.now());
+          this.activeBursts.push(startPocketBurst(ball.id, ball.position, performance.now()));
         }
 
         continue;

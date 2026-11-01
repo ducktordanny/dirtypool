@@ -1,10 +1,12 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { Component, inject } from '@angular/core';
 import { RouterLink, RouterOutlet } from '@angular/router';
 import { SoundToggle } from './components/ui';
 import { AudioService } from './services/audio.service';
+import { HeaderActionsService } from './services/header-actions.service';
 
 @Component({
-  imports: [RouterLink, RouterOutlet, SoundToggle],
+  imports: [NgTemplateOutlet, RouterLink, RouterOutlet, SoundToggle],
   selector: 'dp-root',
   styleUrl: './app.component.scss',
   templateUrl: './app.component.html',
@@ -16,4 +18,5 @@ import { AudioService } from './services/audio.service';
 })
 export class App {
   protected readonly audio = inject(AudioService);
+  protected readonly headerActions = inject(HeaderActionsService);
 }

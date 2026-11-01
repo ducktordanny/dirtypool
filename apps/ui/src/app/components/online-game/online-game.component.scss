@@ -21,32 +21,8 @@
   color: var(--color-text-muted);
 }
 
-.footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.footer__status {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.status {
-  font-weight: 600;
-}
-
-.share {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--color-text-muted);
-}
-
 .share__code {
+  display: inline-block;
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius);
   background: rgba(0, 0, 0, 0.35);
@@ -55,9 +31,19 @@
   letter-spacing: 0.2em;
 }
 
-.error {
+// A short-lived error pinned to the bottom of the table.
+.toast {
+  position: absolute;
+  bottom: var(--space-3);
+  left: 50%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.7);
   color: var(--color-danger);
   font-size: 0.875rem;
+  font-weight: 600;
+  transform: translateX(-50%);
+  white-space: nowrap;
 }
 
 .name-form {

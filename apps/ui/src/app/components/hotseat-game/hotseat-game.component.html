@@ -10,10 +10,6 @@
   (trapPlace)="game.placeTrap($event)"
   (restart)="newGame()"
 />
-<div class="footer">
-  <p class="hint">
-    Pick a trap from the pouch and tap the cloth to drop it. Drag on the table to aim, tap the cue
-    ball for spin, pull the power bar and let go to shoot.
-  </p>
+<ng-template dpHeaderActions>
   <dp-button (click)="newGame()">New game</dp-button>
-</div>
+</ng-template>

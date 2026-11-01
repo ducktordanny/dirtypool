@@ -12,6 +12,7 @@ import {
   POCKETS,
   TABLE_HEIGHT,
   TABLE_WIDTH,
+  WALL_RADIUS,
   WELL_RADIUS,
 } from './table.const.js';
 import { distance } from './vec2.util.js';
@@ -151,6 +152,37 @@ test('spin is gone once the balls stop', () => {
   });
 
   assert.ok(table.balls.every((ball) => ball.spin === undefined));
+});
+
+test('a wall reflects a ball off its flank and lets one pass its end', () => {
+  const wall: Trap = { ...trap(2, 'wall', 1.3, 0.5), direction: { x: 0, y: 1 } };
+  const { table: blocked, events } = simulateShot(tableWith([ball(0, 1, 0.5, 0, 0)], [wall]), {
+    direction: { x: 1, y: 0 },
+    power: 0.2,
+  });
+  const { table: passed } = simulateShot(tableWith([ball(0, 1, 0.5 + 0.12, 0, 0)], [wall]), {
+    direction: { x: 1, y: 0 },
+    power: 0.2,
+  });
+
+  assert.ok(blocked.balls[0]!.position.x < 1.3 - WALL_RADIUS - BALL_RADIUS + 1e-9);
+  assert.ok(events.some((event) => event.kind === 'cushion' && event.ballId === 0));
+  assert.ok(passed.balls[0]!.position.x > 1.4);
+});
+
+test('a hole swallows a slow ball that reaches its middle', () => {
+  const hole = trap(4, 'hole', 1.2, 0.5);
+  const { table, events } = simulateShot(tableWith([ball(0, 1, 0.5, 0, 0)], [hole]), {
+    direction: { x: 1, y: 0 },
+    power: 0.1,
+  });
+
+  assert.deepEqual(
+    events.find((event) => event.kind === 'swallowed'),
+    { kind: 'swallowed', trapId: 4, ballId: 0 },
+  );
+  assert.equal(table.balls[0]!.pocketed, true);
+  assert.deepEqual(table.balls[0]!.position, hole.position);
 });
 
 test('a bumper bounces a ball back and reports the hit', () => {
