@@ -57,12 +57,13 @@ export class OnlineGame {
   private toastTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor() {
+    // Joins on arrival when a nickname is already known. The nickname is read untracked so
+    // typing one into the form does not join on the first keystroke; the form's Join does.
     effect(() => {
       const code = this.code();
-      const ready = this.nickname.valid();
 
       untracked(() => {
-        if (ready && this.joinedWith() !== code) {
+        if (this.nickname.valid() && this.joinedWith() !== code) {
           this.join(code);
         }
       });
