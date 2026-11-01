@@ -1,26 +1,12 @@
 import { Injectable, inject } from '@angular/core';
 import type { Shot, TableState } from '@dirtypool/contracts';
-import {
-  BALL_RADIUS,
-  EIGHT_BALL_ID,
-  FIXED_STEP,
-  POCKETS,
-  isAtRest,
-  startShot,
-  stepTable,
-  type TableEvent,
-} from '@dirtypool/game';
+import { FIXED_STEP, isAtRest, startShot, stepTable, type TableEvent } from '@dirtypool/game';
 import { FRAME_SCHEDULER } from '../types/frame-scheduler.type';
 import { AudioService } from './audio.service';
 
 // Browsers throttle frames in unfocused or hidden tabs. Simulating up to a full second per frame
 // keeps a throttled client in real time and lets a paused one catch up within a few frames.
 const MAX_FRAME_SECONDS = 1;
-// The game turns on the 8: time slows while it nears a pocket and for a moment after it drops.
-const SLOW_MO_SCALE = 0.3;
-const SLOW_MO_HOLD_MS = 500;
-const SLOW_MO_RAMP = 0.04;
-const SLOW_MO_REACH = BALL_RADIUS * 3;
 
 export interface ShotAnimationHandlers {
   onTable(table: TableState): void;
@@ -41,8 +27,6 @@ export class ShotAnimator {
     let accumulator = 0;
     let lastTimestamp: number | null = null;
     let cancelled = false;
-    let timeScale = 1;
-    let holdUntil = Number.NEGATIVE_INFINITY;
 
     const frame = (timestamp: number): void => {
       if (cancelled) {
@@ -55,11 +39,7 @@ export class ShotAnimator {
           : Math.min(MAX_FRAME_SECONDS, (timestamp - lastTimestamp) / 1000);
 
       lastTimestamp = timestamp;
-      timeScale =
-        timestamp < holdUntil || eightBallNearPocket(table)
-          ? SLOW_MO_SCALE
-          : Math.min(1, timeScale + SLOW_MO_RAMP);
-      accumulator += elapsed * timeScale;
+      accumulator += elapsed;
 
       const frameEvents: TableEvent[] = [];
 
@@ -69,12 +49,6 @@ export class ShotAnimator {
         table = result.table;
         frameEvents.push(...result.events);
         accumulator -= FIXED_STEP;
-      }
-
-      if (
-        frameEvents.some((event) => event.kind === 'pocketed' && event.ballId === EIGHT_BALL_ID)
-      ) {
-        holdUntil = timestamp + SLOW_MO_HOLD_MS;
       }
 
       events.push(...frameEvents);
@@ -97,20 +71,4 @@ export class ShotAnimator {
       cancelled = true;
     };
   }
-}
-
-function eightBallNearPocket(table: TableState): boolean {
-  const eight = table.balls[EIGHT_BALL_ID];
-
-  if (eight === undefined || eight.pocketed || (eight.velocity.x === 0 && eight.velocity.y === 0)) {
-    return false;
-  }
-
-  return POCKETS.some((pocket) => {
-    const dx = eight.position.x - pocket.position.x;
-    const dy = eight.position.y - pocket.position.y;
-    const reach = pocket.radius + pocket.mouth + SLOW_MO_REACH;
-
-    return dx * dx + dy * dy < reach * reach;
-  });
 }
