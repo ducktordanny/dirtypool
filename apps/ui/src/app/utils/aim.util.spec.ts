@@ -53,6 +53,18 @@ describe('aim.util', () => {
     expect(aim?.fullness).toBeLessThan(1);
   });
 
+  it('points a packed object ball away from the cue ball, not where it recoils', () => {
+    const table = tableWith(
+      ball(0, 0.5, 0.5),
+      ball(3, 1.0, 0.5 + BALL_RADIUS * 0.5),
+      ball(4, 1.0 + BALL_DIAMETER, 0.5 + BALL_RADIUS * 0.5),
+    );
+    const aim = aimAlong(table, { x: 1, y: 0 });
+
+    expect(aim?.targetBallId).toBe(3);
+    expect(aim?.targetDirection?.x).toBeGreaterThan(0.9);
+  });
+
   it('stops the ghost ball at the cushion when nothing is in the way', () => {
     const table = tableWith(ball(0, 0.5, 0.5));
     const aim = aimAlong(table, { x: 1, y: 0 });

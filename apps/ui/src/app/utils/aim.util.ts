@@ -126,7 +126,10 @@ export function aimAlong(
     if (contact !== undefined) {
       const target = current.balls.find((ball) => ball.id === contact.ballId);
       const heading = normalize(before.velocity);
-      const targetDirection = target === undefined ? null : normalize(target.velocity);
+      // The object ball sets off along the contact normal. Its velocity after the step is no
+      // use: a ball in a pack has already passed that on and may be recoiling.
+      const targetDirection =
+        target === undefined ? null : normalize(subtract(target.position, after.position));
       const speedBefore = length(before.velocity);
       const cueSpeed = speedBefore === 0 ? 0 : Math.min(1, length(after.velocity) / speedBefore);
 
@@ -141,10 +144,7 @@ export function aimAlong(
         targetDirection,
         cueDeflection: cueSpeed < MIN_DEFLECTION_SHARE ? null : normalize(after.velocity),
         cueSpeed,
-        fullness:
-          target === undefined
-            ? 0
-            : Math.max(0, dot(heading, normalize(subtract(target.position, after.position)))),
+        fullness: targetDirection === null ? 0 : Math.max(0, dot(heading, targetDirection)),
       };
     }
 
