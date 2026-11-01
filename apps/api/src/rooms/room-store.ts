@@ -6,6 +6,7 @@ import type {
   PlayerName,
   RoomCode,
   Roster,
+  SeatToken,
   ServerMessage,
   Shot,
   TrapKind,

@@ -59,7 +59,9 @@ test('GET /api/rooms lists rooms that still have a free seat', async (context) =
 });
 
 test('two sockets can create and join a room and the host can shoot', async (context) => {
-  const app = buildApp({ appOrigin: 'http://localhost:4200', rooms: new RoomStore() });
+  // A fixed toss gives the host the break; otherwise the shot below is refused half the time.
+  const rooms = new RoomStore({ random: () => 0 });
+  const app = buildApp({ appOrigin: 'http://localhost:4200', rooms });
   context.after(async () => app.close());
 
   const url = await listen(app);

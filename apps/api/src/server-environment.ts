@@ -10,5 +10,9 @@ export function readServerEnvironment(env: NodeJS.ProcessEnv): ServerEnvironment
     throw new Error('PORT must be a positive integer');
   }
 
-  return { port, appOrigin: env['APP_ORIGIN'] ?? 'http://localhost:4200' };
+  // Render hands the service its public URL, which is the app origin when the API serves the UI.
+  return {
+    port,
+    appOrigin: env['APP_ORIGIN'] ?? env['RENDER_EXTERNAL_URL'] ?? 'http://localhost:4200',
+  };
 }

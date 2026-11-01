@@ -1,0 +1,10 @@
+# One web service: in production the API serves the built UI, and rooms live in its memory.
+# NODE_ENV is set in the start command only, so the build still installs dev dependencies.
+services:
+  - type: web
+    name: dirtypool
+    runtime: node
+    plan: free
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    startCommand: NODE_ENV=production node apps/api/dist/server.js
+    healthCheckPath: /health
