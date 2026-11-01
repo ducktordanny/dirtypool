@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import type {
   Aim,
+  BallId,
   GameState,
   PlayerIndex,
   Shot,
@@ -18,7 +19,7 @@ import type {
   TrapKind,
   Vec2,
 } from '@dirtypool/contracts';
-import { WALL_DIRECTIONS } from '@dirtypool/game';
+import { CUE_BALL_ID, WALL_DIRECTIONS } from '@dirtypool/game';
 import { AudioService } from '../../services/audio.service';
 import { legalTargetIds } from '../../utils/legal-targets.util';
 import type { RemoteShot } from '../../types/remote-shot.type';
@@ -89,6 +90,13 @@ export class GameBoard {
   protected readonly canPlaceTrap = computed(
     () => this.interactive() && !this.game().trapPlaced && this.trapsLeft() > 0,
   );
+  // The chute fills as balls drop during the shot, not only once the result is in. Balls that
+  // went down this shot follow the settled list in the order they fell, which is also the order
+  // the rules will record, so nothing reshuffles when the shot resolves.
+  protected readonly trayBalls = computed(() => [
+    ...this.game().pocketedBalls,
+    ...this.liveDrops(),
+  ]);
   protected readonly result = computed(() => {
     const game = this.game();
 
@@ -111,8 +119,38 @@ export class GameBoard {
   });
 
   private readonly audio = inject(AudioService);
+  private readonly liveDrops = signal<readonly BallId[]>([]);
 
   constructor() {
+    effect(() => {
+      const table = this.table();
+      const settled = this.game().pocketedBalls;
+
+      untracked(() => {
+        const still = this.liveDrops().filter(
+          (id) =>
+            !settled.includes(id) && table.balls.some((ball) => ball.id === id && ball.pocketed),
+        );
+        const fresh = table.balls
+          .filter(
+            (ball) =>
+              ball.pocketed &&
+              ball.id !== CUE_BALL_ID &&
+              !settled.includes(ball.id) &&
+              !still.includes(ball.id),
+          )
+          .map((ball) => ball.id);
+        const next = [...still, ...fresh];
+
+        if (
+          next.length !== this.liveDrops().length ||
+          next.some((id, i) => id !== this.liveDrops()[i])
+        ) {
+          this.liveDrops.set(next);
+        }
+      });
+    });
+
     effect(() => {
       const canPlace = this.canPlaceTrap();
 
