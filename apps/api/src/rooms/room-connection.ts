@@ -136,7 +136,12 @@ export class RoomConnection {
   private broadcastRoster(room: Room, except?: RoomPlayer): void {
     this.rooms.broadcast(
       room,
-      { type: 'roster', roster: this.rooms.roster(room), clock: this.rooms.clock(room) },
+      {
+        type: 'roster',
+        roster: this.rooms.roster(room),
+        game: room.game,
+        clock: this.rooms.clock(room),
+      },
       except,
     );
   }

@@ -135,11 +135,22 @@ describe('RoomService', () => {
     });
     await entry;
 
-    socket.receive({ type: 'roster', roster: [SEATED_HOST, SEATED_GUEST], clock: 30_000 });
+    socket.receive({
+      type: 'roster',
+      roster: [SEATED_HOST, SEATED_GUEST],
+      game: { ...createGame(), currentPlayer: 1 },
+      clock: 30_000,
+    });
 
     expect(service.playerCount()).toBe(2);
     expect(service.roster()).toEqual([SEATED_HOST, SEATED_GUEST]);
     expect(service.clock()?.durationMs).toBe(30_000);
+    // The server tossed a coin for the break when the guest arrived: the guest breaks.
+    expect(service.game()?.currentPlayer).toBe(1);
+    expect(service.canShoot()).toBe(false);
+
+    socket.receive({ type: 'turn-passed', game: createGame(), clock: 30_000 });
+
     expect(service.canShoot()).toBe(true);
   });
 
@@ -302,7 +313,12 @@ describe('RoomService', () => {
 
     expect(service.opponentName()).toBe('Host');
 
-    socket.receive({ type: 'roster', roster: [null, SEATED_GUEST], clock: null });
+    socket.receive({
+      type: 'roster',
+      roster: [null, SEATED_GUEST],
+      game: createGame(),
+      clock: null,
+    });
 
     expect(service.opponentName()).toBeNull();
     expect(service.lastOpponentName()).toBe('Host');

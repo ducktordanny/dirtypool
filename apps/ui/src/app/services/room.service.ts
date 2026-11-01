@@ -363,6 +363,12 @@ export class RoomService {
         this.rosterState.set(message.roster);
         this.rememberOpponent();
         this.setClock(message.clock);
+
+        // Who breaks is settled when the second seat fills; mid-shot the animation's result wins.
+        if (!this.animatingState()) {
+          this.gameState.set(message.game);
+          this.tableState.set(message.game.table);
+        }
         return;
       case 'shot-played':
         if (message.playerIndex !== this.playerIndexState()) {

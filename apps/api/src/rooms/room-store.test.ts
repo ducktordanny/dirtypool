@@ -167,6 +167,22 @@ test('a trap goes down on your own turn only, once per shot, and ages with the s
   assert.deepEqual(room.game.table.traps[1]?.direction, { x: 0, y: 1 });
 });
 
+test('a coin toss decides who breaks once both seats are filled, and again on a rematch', () => {
+  const store = new RoomStore({ random: () => 0.9, schedule: () => () => undefined });
+  const { room } = store.create(() => undefined, 'Host');
+
+  assert.equal(room.game.currentPlayer, 0);
+
+  store.join(room.code, () => undefined, 'Guest');
+
+  assert.equal(room.game.currentPlayer, 1);
+
+  room.game = { ...room.game, phase: 'finished', winner: 1 };
+  store.restart(room);
+
+  assert.equal(room.game.currentPlayer, 1);
+});
+
 test('private rooms stay out of the open list but can still be joined by code', () => {
   const store = new RoomStore({ random: () => 0, schedule: () => () => undefined });
   const { room } = store.create(() => undefined, 'Host', true);

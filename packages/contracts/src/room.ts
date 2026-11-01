@@ -71,7 +71,13 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     game: gameStateSchema,
     clock: shotClockSchema,
   }),
-  z.object({ type: z.literal('roster'), roster: rosterSchema, clock: shotClockSchema }),
+  // Seats changed; the game comes along because filling the second seat decides who breaks.
+  z.object({
+    type: z.literal('roster'),
+    roster: rosterSchema,
+    game: gameStateSchema,
+    clock: shotClockSchema,
+  }),
   z.object({
     type: z.literal('shot-played'),
     playerIndex: playerIndexSchema,

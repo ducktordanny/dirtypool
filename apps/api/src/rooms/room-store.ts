@@ -131,6 +131,12 @@ export class RoomStore {
     const player = this.seat(taken.has(0) ? 1 : 0, name, send);
 
     room.players.push(player);
+
+    // The break is a coin toss, not the host's by right. A seat taken mid-game keeps the turn.
+    if (room.game.lastOutcome === null) {
+      room.game = { ...room.game, currentPlayer: this.coinToss() };
+    }
+
     this.armClock(room, 0);
 
     return { kind: 'joined', room, player };
@@ -248,7 +254,7 @@ export class RoomStore {
       return false;
     }
 
-    room.game = createGame();
+    room.game = { ...createGame(), currentPlayer: this.coinToss() };
     this.armClock(room, 0);
 
     return true;
@@ -289,6 +295,10 @@ export class RoomStore {
         player.send(message);
       }
     }
+  }
+
+  private coinToss(): PlayerIndex {
+    return this.random() < 0.5 ? 0 : 1;
   }
 
   private seat(index: PlayerIndex, name: PlayerName, send: SendMessage): RoomPlayer {
