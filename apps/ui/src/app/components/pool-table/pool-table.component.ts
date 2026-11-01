@@ -331,6 +331,8 @@ export class PoolTable {
     const app = new Application();
 
     await app.init({
+      // The ball shader is written for WebGL 2; keep every browser on the same renderer.
+      preference: 'webgl',
       resizeTo: this.host.nativeElement,
       antialias: true,
       autoDensity: true,
